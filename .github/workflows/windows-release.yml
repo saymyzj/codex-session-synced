@@ -7,8 +7,8 @@ on:
     paths:
       - "Windows/**"
       - ".github/workflows/windows-release.yml"
-      - "docs/release/v1.1.0.md"
-      - "docs/release/v1.1.0-en.md"
+      - "docs/release/v1.2.0.md"
+      - "docs/release/v1.2.0-en.md"
   workflow_dispatch:
 
 permissions:
@@ -18,8 +18,8 @@ jobs:
   publish:
     runs-on: windows-latest
     env:
-      VERSION: "1.1.0"
-      TAG: "v1.1.0"
+      VERSION: "1.2.0"
+      TAG: "v1.2.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -30,28 +30,36 @@ jobs:
       - name: Run isolated self-test
         run: dotnet run --project Windows/CodexSynced.Windows/CodexSynced.Windows.csproj -c Release -- --self-test
 
-      - name: Publish single-file app
+      - name: Publish Windows app directory
         run: >
           dotnet publish Windows/CodexSynced.Windows/CodexSynced.Windows.csproj
           -c Release
           -r win-x64
           --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishSingleFile=false
           -p:DebugType=None
           -p:DebugSymbols=false
           -o artifacts/publish
 
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 6.0.1
+
       - name: Package release files
         shell: pwsh
         run: |
-          Copy-Item "artifacts/publish/Codex Synced.exe" "artifacts/Codex-Synced-Windows-x64-$env:VERSION.exe"
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          $publishDir = (Resolve-Path "artifacts/publish").Path
+          wix build Windows/Installer/Package.wxs `
+            -d ProductVersion=$env:VERSION `
+            -d PublishDir=$publishDir `
+            -arch x64 `
+            -o "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi"
           Compress-Archive -Path "artifacts/publish/*" -DestinationPath "artifacts/Codex-Synced-Windows-x64-$env:VERSION.zip"
           Invoke-WebRequest `
             -Uri "https://github.com/saymyzj/codex-session-synced/releases/download/v1.0.1/Codex-Synced-1.0.1.dmg" `
             -OutFile "artifacts/Codex-Synced-macOS-1.0.1.dmg"
           $files = @(
-            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.exe",
+            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi",
             "artifacts/Codex-Synced-Windows-x64-$env:VERSION.zip",
             "artifacts/Codex-Synced-macOS-1.0.1.dmg"
           )
@@ -68,15 +76,11 @@ jobs:
         run: |
           gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:TAG --target main --title "Codex Synced $env:VERSION" --notes-file "docs/release/v1.1.0.md"
+            gh release create $env:TAG --target main --title "Codex Synced $env:VERSION" --notes-file "docs/release/v1.2.0.md"
           }
           gh release upload $env:TAG `
-            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.exe" `
+            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi" `
             "artifacts/Codex-Synced-Windows-x64-$env:VERSION.zip" `
             "artifacts/Codex-Synced-macOS-1.0.1.dmg" `
             "artifacts/SHA256SUMS.txt" `
             --clobber
-          gh release view "v1.1.0-windows" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            gh release delete "v1.1.0-windows" --cleanup-tag --yes
-          }
