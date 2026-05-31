@@ -2,14 +2,16 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <StartupObject>CodexSynced.Windows.WpfProgram</StartupObject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Codex Synced</AssemblyName>
     <RootNamespace>CodexSynced.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Resources/AppIcon.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
+    <ApplicationIcon>Resources\AppIcon.ico</ApplicationIcon>
+    <Version>1.2.0</Version>
     <Authors>saymyzj</Authors>
     <Description>Repair local Codex conversation visibility after switching providers.</Description>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
