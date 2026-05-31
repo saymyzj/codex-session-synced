@@ -1,6 +1,6 @@
 # Codex Synced
 
-中文 | [English](#english)
+[English](README_EN.md) | 中文
 
 Codex Synced 是一个 Windows / macOS 本地修复工具，用来解决切换 Codex Provider 后“历史会话突然不可见”的问题。
 
@@ -12,7 +12,7 @@ Codex Synced 是一个 Windows / macOS 本地修复工具，用来解决切换 C
 
 ## Windows 下载与使用
 
-1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases) 下载 `Codex-Synced-Windows-x64-1.1.0.exe`。
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-Windows-x64-1.1.0.exe`。
 2. 退出 Codex。
 3. 双击运行 EXE，查看待修复项。
 4. 选择备份模式，点击“备份并修复”。
@@ -22,7 +22,7 @@ Windows 版是便携单文件应用，不需要安装。默认读取 `%USERPROFI
 
 ## macOS 下载与安装
 
-1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases) 下载 `Codex-Synced-1.0.1.dmg`。
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-macOS-1.0.1.dmg`。
 2. 双击打开 DMG。
 3. 将 `Codex Synced.app` 拖入 `Applications`。
 4. 第一次打开时，如果 macOS 提示来自未验证开发者，请在 Finder 中右键点击应用，选择“打开”，再确认打开。
@@ -139,72 +139,3 @@ Codex 运行时可能正在读写本地状态文件。为了避免写入冲突�
 ### 没有待修复项怎么办？
 
 说明当前本地历史已经和当前 Provider 对齐。之后如果切换 Provider，可以重新扫描。
-
-## English
-
-Codex Synced is a local Windows / macOS repair tool for Codex conversation history. It helps when conversations still exist on disk but disappear from the Codex UI after switching between the official OAuth flow, OpenAI API key mode, a third-party API, or another custom provider.
-
-Codex Synced reads the active Codex provider, previews the local history records that need alignment, creates a backup, and then repairs local visibility data. It is not a cloud sync tool. Everything happens on your machine.
-
-## Windows Download and Usage
-
-1. Download `Codex-Synced-Windows-x64-1.1.0.exe` from [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases).
-2. Quit Codex.
-3. Run the EXE and review the pending changes.
-4. Select a backup mode, then click `备份并修复`.
-5. Reopen Codex and verify that local history is visible.
-
-The Windows build is a portable single-file app. It defaults to `%USERPROFILE%\.codex`, and the directory can be changed in settings.
-
-## macOS Download and Install
-
-1. Download `Codex-Synced-1.0.1.dmg` from [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases).
-2. Open the DMG.
-3. Drag `Codex Synced.app` into `Applications`.
-4. On first launch, if macOS blocks the app, right-click it in Finder, choose “Open”, and confirm.
-5. Quit Codex before repairing or restoring local history.
-
-### If macOS says the app is damaged
-
-Codex Synced 1.0.1 is not Apple-notarized yet. Gatekeeper may block it with an “unidentified developer”, “cannot be verified”, or “damaged and can’t be opened” message. For downloads from this repository’s GitHub Releases, this is usually caused by the quarantine attribute rather than a broken app bundle.
-
-Try these steps in order:
-
-1. Make sure the DMG came from the official GitHub Releases page.
-2. Optionally verify the SHA256 checksum:
-
-```bash
-shasum -a 256 ~/Downloads/Codex-Synced-1.0.1.dmg
-```
-
-3. In Finder, open `Applications`, right-click `Codex Synced.app`, choose “Open”, and confirm.
-4. If it is still blocked, open System Settings -> Privacy & Security, then use “Open Anyway” in the Security section.
-5. If macOS says the app is damaged, remove the quarantine attribute:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Codex Synced.app"
-```
-
-Avoid globally disabling Gatekeeper with commands such as `sudo spctl --master-disable`. Removing quarantine from this one verified app is a narrower workaround.
-
-## Highlights
-
-- Detects the active Codex provider automatically.
-- Finds the latest local `state_*.sqlite` database.
-- Previews SQLite provider rows, rollout metadata, and missing `session_index.jsonl` entries.
-- Creates a lightweight or full backup before writing.
-- Restores from previous backups when needed.
-- Provides both Chinese and English UI.
-
-## Safety
-
-Codex Synced does not modify OAuth tokens, API keys, third-party URLs, provider settings, or message bodies. It only repairs local history visibility data after you review the preview and choose a backup mode.
-
-## Basic Workflow
-
-1. Open Codex Synced.
-2. Review the detected provider and pending repair count.
-3. Open “Pending Repairs” and inspect the preview.
-4. Choose “Lightweight” or “Full” backup.
-5. Click “Back Up and Repair”.
-6. Reopen Codex and check your history.
