@@ -1,0 +1,11 @@
+Use case: logo-brand
+Asset type: macOS App Icon, final source PNG, 1024x1024
+Primary request: Create a polished Apple-style macOS app icon for "Codex Synced", a Chinese macOS utility that safely repairs invisible Codex Desktop conversation history after switching between OpenAI OAuth and third-party API providers.
+Style: premium Apple macOS icon aesthetic, dimensional but restrained, crisp geometry, soft material depth, subtle glass-and-metal lighting, refined shadows, no text, no letters, no logos, no trademarks.
+Subject: a rounded-square app icon containing an abstract local database core represented as a small luminous stacked cylinder or vault at the center, surrounded by two elegant provider paths that dynamically align into one visible conversation-history stream.
+Concept details: show hidden history becoming visible again through layered chat-history cards or timeline strips emerging from behind the database and snapping into alignment; show provider matching with two distinct arcs or rails converging cleanly around the core; show safe repair with a subtle shield-like negative space or protective ring, but avoid a literal medical cross.
+Composition: centered icon mark, strong silhouette at small sizes, balanced square-safe layout with generous padding, readable at 16px and beautiful at 1024px.
+Color direction: Apple-like sophisticated palette with deep graphite, clean silver, soft cyan/teal signal light, and a small warm amber repair accent; avoid purple-dominant gradients, avoid beige/brown themes.
+Rendering: high-resolution 3D icon illustration, smooth rounded forms, realistic but simplified materials, soft ambient occlusion, precise edges, macOS Big Sur/Sonoma app icon feel.
+Constraints: no Chinese or English text, no "CS" monogram, no OpenAI logo, no Codex logo, no OAuth/API words, no padlock cliché dominating the icon, no cluttered UI screenshot, no tiny unreadable database tables, no watermark, no background scene outside the rounded-square icon.
+Output: 1024x1024 PNG, opaque background, final app icon source.
