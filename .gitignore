@@ -4,3 +4,7 @@ dist/
 *.xcuserdata/
 DerivedData/
 Resources/AppIcon.iconset/
+Windows/**/bin/
+Windows/**/obj/
+Windows/**/Resources/AppIcon.ico
+artifacts/
