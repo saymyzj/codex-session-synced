@@ -101,14 +101,10 @@ struct Sidebar: View {
     private func item(_ section: AppSection, _ image: String, _ title: String) -> some View {
         let selected = viewModel.selectedSection == section
         return Button {
-            guard viewModel.selectedSection != section else {
-                AppHaptics.click()
-                return
-            }
+            guard viewModel.selectedSection != section else { return }
             withAnimation(AppMotion.settle) {
                 viewModel.selectedSection = section
             }
-            AppHaptics.selection()
         } label: {
             Label(title, systemImage: image)
                 .font(.system(size: 14, weight: selected ? .semibold : .regular))
@@ -174,14 +170,10 @@ struct LanguageSwitch: View {
     private func languageButton(_ language: Language) -> some View {
         let selected = viewModel.settings.language == language
         return Button {
-            guard viewModel.settings.language != language else {
-                AppHaptics.click()
-                return
-            }
+            guard viewModel.settings.language != language else { return }
             withAnimation(AppMotion.settle) {
                 viewModel.settings.language = language
             }
-            AppHaptics.selection()
         } label: {
             ZStack {
                 if selected {

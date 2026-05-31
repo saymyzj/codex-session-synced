@@ -12,7 +12,7 @@ Codex Synced 是一个 macOS 本地修复工具，用来解决切换 Codex Provi
 
 ## 下载与安装
 
-1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases) 下载 `Codex-Synced-1.0.0.dmg`。
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases) 下载 `Codex-Synced-1.0.1.dmg`。
 2. 双击打开 DMG。
 3. 将 `Codex Synced.app` 拖入 `Applications`。
 4. 第一次打开时，如果 macOS 提示来自未验证开发者，请在 Finder 中右键点击应用，选择“打开”，再确认打开。
@@ -20,7 +20,7 @@ Codex Synced 是一个 macOS 本地修复工具，用来解决切换 Codex Provi
 
 ### macOS 提示“无法验证”或“已损坏”怎么办？
 
-Codex Synced 1.0.0 暂未经过 Apple 公证。macOS Gatekeeper 可能会把未公证的下载 app 标记为“无法打开”“无法验证开发者”，甚至显示“已损坏并无法打开”。这通常是下载隔离属性触发的安全拦截，不代表 app 文件真的损坏。
+Codex Synced 1.0.1 暂未经过 Apple 公证。macOS Gatekeeper 可能会把未公证的下载 app 标记为“无法打开”“无法验证开发者”，甚至显示“已损坏并无法打开”。这通常是下载隔离属性触发的安全拦截，不代表 app 文件真的损坏。
 
 建议按下面顺序处理：
 
@@ -28,7 +28,7 @@ Codex Synced 1.0.0 暂未经过 Apple 公证。macOS Gatekeeper 可能会把未�
 2. 可选：校验下载文件的 SHA256，应与 Release 页面一致：
 
 ```bash
-shasum -a 256 ~/Downloads/Codex-Synced-1.0.0.dmg
+shasum -a 256 ~/Downloads/Codex-Synced-1.0.1.dmg
 ```
 
 3. 先尝试 Apple 推荐的方式：在 Finder 中进入 `Applications`，右键点击 `Codex Synced.app`，选择“打开”，再确认打开。
@@ -138,7 +138,7 @@ Codex Synced reads the active Codex provider, previews the local history records
 
 ## Download and Install
 
-1. Download `Codex-Synced-1.0.0.dmg` from [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases).
+1. Download `Codex-Synced-1.0.1.dmg` from [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases).
 2. Open the DMG.
 3. Drag `Codex Synced.app` into `Applications`.
 4. On first launch, if macOS blocks the app, right-click it in Finder, choose “Open”, and confirm.
@@ -146,7 +146,7 @@ Codex Synced reads the active Codex provider, previews the local history records
 
 ### If macOS says the app is damaged
 
-Codex Synced 1.0.0 is not Apple-notarized yet. Gatekeeper may block it with an “unidentified developer”, “cannot be verified”, or “damaged and can’t be opened” message. For downloads from this repository’s GitHub Releases, this is usually caused by the quarantine attribute rather than a broken app bundle.
+Codex Synced 1.0.1 is not Apple-notarized yet. Gatekeeper may block it with an “unidentified developer”, “cannot be verified”, or “damaged and can’t be opened” message. For downloads from this repository’s GitHub Releases, this is usually caused by the quarantine attribute rather than a broken app bundle.
 
 Try these steps in order:
 
@@ -154,7 +154,7 @@ Try these steps in order:
 2. Optionally verify the SHA256 checksum:
 
 ```bash
-shasum -a 256 ~/Downloads/Codex-Synced-1.0.0.dmg
+shasum -a 256 ~/Downloads/Codex-Synced-1.0.1.dmg
 ```
 
 3. In Finder, open `Applications`, right-click `Codex Synced.app`, choose “Open”, and confirm.

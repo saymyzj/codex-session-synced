@@ -59,8 +59,24 @@ enum RolloutRepairer {
     private static func firstLine(url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        let data = try? handle.read(upToCount: 128 * 1024)
-        guard let data, let content = String(data: data, encoding: .utf8) else { return nil }
-        return content.components(separatedBy: .newlines).first
+        var line = Data()
+        while true {
+            let chunk: Data
+            do {
+                chunk = try handle.read(upToCount: 64 * 1024) ?? Data()
+            } catch {
+                return nil
+            }
+            guard !chunk.isEmpty else { break }
+            if let newline = chunk.firstIndex(of: UInt8(ascii: "\n")) {
+                line.append(contentsOf: chunk[..<newline])
+                break
+            }
+            line.append(chunk)
+        }
+        if line.last == UInt8(ascii: "\r") {
+            line.removeLast()
+        }
+        return String(data: line, encoding: .utf8)
     }
 }

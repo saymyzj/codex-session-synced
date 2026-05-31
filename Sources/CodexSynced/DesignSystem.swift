@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import CodexSyncedCore
 
@@ -21,16 +20,6 @@ enum AppMotion {
     static let smooth = Animation.spring(response: 0.32, dampingFraction: 0.82)
     static let settle = Animation.spring(response: 0.44, dampingFraction: 0.84)
     static let playful = Animation.spring(response: 0.42, dampingFraction: 0.68)
-}
-
-enum AppHaptics {
-    static func click() {
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-    }
-
-    static func selection() {
-        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
-    }
 }
 
 struct PressableButtonStyle: ButtonStyle {
@@ -90,7 +79,6 @@ struct PrimaryButton: View {
     var body: some View {
         Button {
             tapPulse.toggle()
-            AppHaptics.click()
             action()
         } label: {
             HStack(spacing: 8) {
@@ -139,7 +127,6 @@ struct SecondaryButton: View {
     var body: some View {
         Button {
             tapPulse.toggle()
-            AppHaptics.click()
             action()
         } label: {
             Label(title, systemImage: systemImage)
@@ -190,7 +177,6 @@ struct BackupModeSwitch: View {
             withAnimation(AppMotion.settle) {
                 selection = mode
             }
-            AppHaptics.selection()
         } label: {
             ZStack {
                 if selected {
@@ -218,7 +204,6 @@ struct CounterControl: View {
     var body: some View {
         HStack(spacing: 8) {
             smallButton("minus") {
-                AppHaptics.click()
                 value = max(range.lowerBound, value - 1)
             }
             Text("\(value)")
@@ -227,7 +212,6 @@ struct CounterControl: View {
                 .frame(width: 28)
                 .contentTransition(.numericText())
             smallButton("plus") {
-                AppHaptics.click()
                 value = min(range.upperBound, value + 1)
             }
         }
@@ -266,7 +250,6 @@ struct AnimatedToggle: View {
             withAnimation(AppMotion.playful) {
                 isOn.toggle()
             }
-            AppHaptics.selection()
         } label: {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Capsule()
