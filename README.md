@@ -12,13 +12,13 @@ Codex Synced 是一个 Windows / macOS 本地修复工具，用来解决切换 C
 
 ## Windows 下载与使用
 
-1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-Windows-x64-1.1.0.exe`。
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-Windows-x64-1.2.0.msi`。
 2. 退出 Codex。
-3. 双击运行 EXE，查看待修复项。
-4. 选择备份模式，点击“备份并修复”。
+3. 双击 MSI 完成安装，然后从开始菜单打开 `Codex Synced`。
+4. 查看待修复项，选择备份模式，点击“备份并修复”。
 5. 重新打开 Codex，检查历史会话。
 
-Windows 版是便携单文件应用，不需要安装。默认读取 `%USERPROFILE%\.codex`，也可以在设置中修改目录。
+Windows 版是完整桌面应用安装包，默认读取 `%USERPROFILE%\.codex`，也可以在设置中修改目录。Release 中也提供 `Codex-Synced-Windows-x64-1.2.0.zip`，用于不想安装时手动运行应用目录。
 
 ## macOS 下载与安装
 
