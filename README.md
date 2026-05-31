@@ -2,7 +2,7 @@
 
 中文 | [English](#english)
 
-Codex Synced 是一个 macOS 本地修复工具，用来解决切换 Codex Provider 后“历史会话突然不可见”的问题。
+Codex Synced 是一个 Windows / macOS 本地修复工具，用来解决切换 Codex Provider 后“历史会话突然不可见”的问题。
 
 当你在 Codex 官方 OAuth、OpenAI API Key、第三方 API 或自定义 Provider 之间切换时，本地历史里记录的 Provider 可能和当前登录态不一致。Codex Synced 会读取当前 Codex Provider，预览需要修复的本地记录，并在备份后把历史会话重新对齐到当前环境。
 
@@ -10,7 +10,17 @@ Codex Synced 是一个 macOS 本地修复工具，用来解决切换 Codex Provi
 
 ![Codex Synced 首页](docs/screenshots/home-zh.png)
 
-## 下载与安装
+## Windows 下载与使用
+
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases) 下载 `Codex-Synced-Windows-x64-1.1.0.exe`。
+2. 退出 Codex。
+3. 双击运行 EXE，查看待修复项。
+4. 选择备份模式，点击“备份并修复”。
+5. 重新打开 Codex，检查历史会话。
+
+Windows 版是便携单文件应用，不需要安装。默认读取 `%USERPROFILE%\.codex`，也可以在设置中修改目录。
+
+## macOS 下载与安装
 
 1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases) 下载 `Codex-Synced-1.0.1.dmg`。
 2. 双击打开 DMG。
@@ -132,11 +142,21 @@ Codex 运行时可能正在读写本地状态文件。为了避免写入冲突�
 
 ## English
 
-Codex Synced is a local macOS repair tool for Codex conversation history. It helps when conversations still exist on disk but disappear from the Codex UI after switching between the official OAuth flow, OpenAI API key mode, a third-party API, or another custom provider.
+Codex Synced is a local Windows / macOS repair tool for Codex conversation history. It helps when conversations still exist on disk but disappear from the Codex UI after switching between the official OAuth flow, OpenAI API key mode, a third-party API, or another custom provider.
 
-Codex Synced reads the active Codex provider, previews the local history records that need alignment, creates a backup, and then repairs local visibility data. It is not a cloud sync tool. Everything happens on your Mac.
+Codex Synced reads the active Codex provider, previews the local history records that need alignment, creates a backup, and then repairs local visibility data. It is not a cloud sync tool. Everything happens on your machine.
 
-## Download and Install
+## Windows Download and Usage
+
+1. Download `Codex-Synced-Windows-x64-1.1.0.exe` from [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases).
+2. Quit Codex.
+3. Run the EXE and review the pending changes.
+4. Select a backup mode, then click `备份并修复`.
+5. Reopen Codex and verify that local history is visible.
+
+The Windows build is a portable single-file app. It defaults to `%USERPROFILE%\.codex`, and the directory can be changed in settings.
+
+## macOS Download and Install
 
 1. Download `Codex-Synced-1.0.1.dmg` from [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases).
 2. Open the DMG.
