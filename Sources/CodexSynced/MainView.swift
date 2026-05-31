@@ -110,26 +110,24 @@ struct Sidebar: View {
             }
             AppHaptics.selection()
         } label: {
-            ZStack(alignment: .leading) {
-                if selected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white)
-                        .matchedGeometryEffect(id: "sidebar-selection", in: sidebarNamespace)
-                        .shadow(color: DS.shadow.opacity(0.55), radius: 10, x: 0, y: 5)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(DS.line)
-                        )
+            Label(title, systemImage: image)
+                .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                .lineLimit(1)
+                .symbolEffect(.bounce, value: selected)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .leading)
+                .background {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white)
+                            .matchedGeometryEffect(id: "sidebar-selection", in: sidebarNamespace)
+                            .shadow(color: DS.shadow.opacity(0.55), radius: 10, x: 0, y: 5)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(DS.line)
+                            )
+                    }
                 }
-
-                Label(title, systemImage: image)
-                    .font(.system(size: 14, weight: selected ? .semibold : .regular))
-                    .lineLimit(1)
-                    .symbolEffect(.bounce, value: selected)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-            }
         }
         .buttonStyle(.plain)
         .foregroundStyle(selected ? DS.ink : DS.muted)
