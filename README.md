@@ -38,7 +38,7 @@ Codex Synced 1.0.1 暂未经过 Apple 公证。macOS Gatekeeper 可能会把未�
 2. 可选：校验下载文件的 SHA256，应与 Release 页面一致：
 
 ```bash
-shasum -a 256 ~/Downloads/Codex-Synced-1.0.1.dmg
+shasum -a 256 ~/Downloads/Codex-Synced-macOS-1.0.1.dmg
 ```
 
 3. 先尝试 Apple 推荐的方式：在 Finder 中进入 `Applications`，右键点击 `Codex Synced.app`，选择“打开”，再确认打开。
