@@ -8,13 +8,13 @@ Codex Synced reads the active Codex provider, previews the local history records
 
 ## Windows Download and Usage
 
-1. Download `Codex-Synced-Windows-x64-1.1.0.exe` from the [latest GitHub Release](https://github.com/saymyzj/codex-session-synced/releases/latest).
+1. Download `Codex-Synced-Windows-x64-1.2.0.msi` from the [latest GitHub Release](https://github.com/saymyzj/codex-session-synced/releases/latest).
 2. Quit Codex.
-3. Run the EXE and review the pending changes.
-4. Choose a backup mode, then apply the repair.
+3. Install the MSI, then open `Codex Synced` from the Start menu.
+4. Review pending changes, choose a backup mode, then apply the repair.
 5. Reopen Codex and verify that local history is visible.
 
-The Windows build is a portable single-file app. It defaults to `%USERPROFILE%\.codex`, and the directory can be changed in settings.
+The Windows build is now a full desktop app installer. It defaults to `%USERPROFILE%\.codex`, and the directory can be changed in settings. The Release also includes `Codex-Synced-Windows-x64-1.2.0.zip` for users who prefer a manually extracted app directory.
 
 ## macOS Download and Install
 
