@@ -1,17 +1,21 @@
-name: Windows release
+name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  publish:
+  windows:
     runs-on: windows-latest
     env:
-      VERSION: "1.2.3"
-      TAG: "v1.2.3"
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +32,7 @@ jobs:
           -c Release
           -r win-x64
           --self-contained true
+          -p:Version=${{ env.VERSION }}
           -p:PublishSingleFile=false
           -p:DebugType=None
           -p:DebugSymbols=false
@@ -40,11 +45,16 @@ jobs:
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           wix extension add WixToolset.UI.wixext/6.0.1 --global
 
-      - name: Package release files
+      - name: Package Windows files
         shell: pwsh
         run: |
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           $publishDir = (Resolve-Path "artifacts/publish").Path
+          foreach ($runtimeFile in @("coreclr.dll", "hostfxr.dll", "hostpolicy.dll")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $publishDir $runtimeFile))) {
+              throw "Self-contained publish is missing required runtime file: $runtimeFile"
+            }
+          }
           wix build Windows/Installer/Package.wxs `
             -ext WixToolset.UI.wixext `
             -culture en-US `
@@ -53,34 +63,68 @@ jobs:
             -arch x64 `
             -o "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi"
           Compress-Archive -Path "artifacts/publish/*" -DestinationPath "artifacts/Codex-Synced-Windows-x64-$env:VERSION.zip"
-          Invoke-WebRequest `
-            -Uri "https://github.com/saymyzj/codex-session-synced/releases/download/v1.0.1/Codex-Synced-1.0.1.dmg" `
-            -OutFile "artifacts/Codex-Synced-macOS-1.0.1.dmg"
-          $files = @(
-            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi",
-            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.zip",
-            "artifacts/Codex-Synced-macOS-1.0.1.dmg"
-          )
-          $lines = foreach ($file in $files) {
-            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
-            "$hash  $([System.IO.Path]::GetFileName($file))"
-          }
-          Set-Content -Path "artifacts/SHA256SUMS.txt" -Value $lines -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-files
+          path: |
+            artifacts/Codex-Synced-Windows-x64-${{ env.VERSION }}.msi
+            artifacts/Codex-Synced-Windows-x64-${{ env.VERSION }}.zip
+
+  macos:
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package macOS DMG
+        run: bash scripts/package-dmg.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-files
+          path: dist/Codex-Synced-macOS-${{ env.VERSION }}.dmg
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      TAG: v${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Write checksums
+        run: |
+          cd artifacts
+          sha256sum Codex-Synced-* > SHA256SUMS.txt
 
       - name: Create or update GitHub release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view $env:TAG 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:TAG --target main --title "Codex Synced $env:VERSION" --notes-file "docs/release/v1.2.3.md"
-          } else {
-            gh release edit $env:TAG --title "Codex Synced $env:VERSION" --notes-file "docs/release/v1.2.3.md"
-          }
-          gh release upload $env:TAG `
-            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi" `
-            "artifacts/Codex-Synced-Windows-x64-$env:VERSION.zip" `
-            "artifacts/Codex-Synced-macOS-1.0.1.dmg" `
-            "artifacts/SHA256SUMS.txt" `
-            --clobber
+          notes_file="docs/release/v$VERSION.md"
+          test -f "$notes_file"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Codex Synced $VERSION" --notes-file "$notes_file"
+          else
+            gh release create "$TAG" --target main --title "Codex Synced $VERSION" --notes-file "$notes_file"
+          fi
+
+          while IFS= read -r asset; do
+            case "$asset" in
+              Codex-Synced-Windows-x64-*.msi|Codex-Synced-Windows-x64-*.zip|Codex-Synced-macOS-*.dmg)
+                case "$asset" in
+                  *-"$VERSION".msi|*-"$VERSION".zip|*-"$VERSION".dmg) ;;
+                  *) gh release delete-asset "$TAG" "$asset" --yes ;;
+                esac
+                ;;
+            esac
+          done < <(gh release view "$TAG" --json assets --jq '.assets[].name')
+
+          gh release upload "$TAG" artifacts/* --clobber

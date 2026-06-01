@@ -590,13 +590,20 @@ internal sealed class MainWindow : Window
 
     private Border PreviewRow(ThreadRow row)
     {
-        var title = string.IsNullOrWhiteSpace(row.Title) ? row.Id : row.Title;
-        var grid = new Grid { Margin = new Thickness(0, 12, 0, 0) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) }); grid.ColumnDefinitions.Add(new ColumnDefinition()); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var grid = new Grid { Margin = new Thickness(0, 8, 0, 0), MinHeight = 36 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) }); grid.ColumnDefinitions.Add(new ColumnDefinition()); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(SoftIcon("▦", Blue));
-        AddTo(grid, TextBlockPair(title, $"{row.Id} · {row.Cwd}", mono: true), 1);
+        AddTo(grid, Text(PreviewTitle(row), 14, FontWeights.Medium, Ink), 1);
         AddTo(grid, Text($"{row.ModelProvider} -> {_scan?.ProviderInfo.Provider}", 12, FontWeights.Normal, Muted, mono: true), 2);
-        return new Border { Padding = new Thickness(12), Background = Subtle, BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
+        return new Border { Padding = new Thickness(10), Background = Subtle, BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
+    }
+
+    private static string PreviewTitle(ThreadRow row)
+    {
+        var title = row.Title
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        return string.IsNullOrWhiteSpace(title) ? row.Id : title;
     }
 
     private Border BackupRow(BackupRecord backup)

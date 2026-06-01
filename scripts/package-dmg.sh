@@ -3,7 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="Codex Synced"
-APP_VERSION="1.0.1"
+APP_VERSION="${APP_VERSION:-${1:-}}"
+if [[ -z "$APP_VERSION" ]]; then
+  echo "Usage: scripts/package-dmg.sh <version>" >&2
+  exit 2
+fi
+BUILD_NUMBER="${BUILD_NUMBER:-${APP_VERSION//./}}"
 BUNDLE_ID="com.zhoujia.codex-synced"
 BUILD_DIR="$ROOT_DIR/.build/release"
 DIST_DIR="$ROOT_DIR/dist"
@@ -12,7 +17,7 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 DMG_PATH="$DIST_DIR/$APP_NAME.dmg"
-VERSIONED_DMG_PATH="$DIST_DIR/Codex-Synced-$APP_VERSION.dmg"
+VERSIONED_DMG_PATH="$DIST_DIR/Codex-Synced-macOS-$APP_VERSION.dmg"
 DMG_STAGING_DIR="$DIST_DIR/dmg-staging"
 RW_DMG="$DIST_DIR/$APP_NAME-rw.dmg"
 ICON_SOURCE="$ROOT_DIR/Resources/AppIconSource.png"
@@ -59,7 +64,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key>
   <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>101</string>
+  <string>$BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>

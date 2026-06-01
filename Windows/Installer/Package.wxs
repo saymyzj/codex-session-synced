@@ -6,7 +6,9 @@
     Version="$(var.ProductVersion)"
     UpgradeCode="{A1D5D6F1-FF26-4D1E-A69B-9329B2375C53}"
     Scope="perMachine">
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Codex Synced is already installed." />
+    <MajorUpgrade
+      Schedule="afterInstallInitialize"
+      DowngradeErrorMessage="A newer version of Codex Synced is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Icon Id="AppIcon.ico" SourceFile="$(sys.SOURCEFILEDIR)..\CodexSynced.Windows\Resources\AppIcon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />

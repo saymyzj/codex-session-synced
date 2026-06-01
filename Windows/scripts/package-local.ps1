@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.2.3",
+    [string]$Version = "1.2.4",
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
     [string]$OutputRoot = "artifacts\local",
@@ -65,6 +65,13 @@ Invoke-Native "dotnet" (@(
     "-p:DebugSymbols=false",
     "-o", $publishDir
 ))
+
+$requiredRuntimeFiles = @("coreclr.dll", "hostfxr.dll", "hostpolicy.dll")
+foreach ($runtimeFile in $requiredRuntimeFiles) {
+    if (-not (Test-Path -LiteralPath (Join-Path $publishDir $runtimeFile))) {
+        throw "Self-contained publish is missing required runtime file: $runtimeFile"
+    }
+}
 
 $wix = Get-Command wix -ErrorAction Stop
 Invoke-Native $wix.Source @(

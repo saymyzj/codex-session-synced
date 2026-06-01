@@ -86,18 +86,11 @@ struct PendingRepairsView: View {
                                 .frame(width: 34, height: 34)
                                 .background(DS.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(displayTitle(for: thread))
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(DS.ink)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                Text("\(thread.id) · \(thread.cwd)")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(DS.muted)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
+                            Text(displayTitle(for: thread))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(DS.ink)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
 
                             Spacer()
 
@@ -149,7 +142,10 @@ struct PendingRepairsView: View {
     }
 
     private func displayTitle(for thread: ThreadRow) -> String {
-        let title = thread.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = thread.title
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
         return title.isEmpty ? thread.id : title
     }
 }
