@@ -1,6 +1,13 @@
 name: Windows release
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/windows-release.yml"
+      - "docs/release/v1.2.3.md"
+      - "docs/release/v1.2.3-en.md"
   workflow_dispatch:
 
 permissions:
@@ -75,6 +82,8 @@ jobs:
           gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $env:TAG --target main --title "Codex Synced $env:VERSION" --notes-file "docs/release/v1.2.3.md"
+          } else {
+            gh release edit $env:TAG --title "Codex Synced $env:VERSION" --notes-file "docs/release/v1.2.3.md"
           }
           gh release upload $env:TAG `
             "artifacts/Codex-Synced-Windows-x64-$env:VERSION.msi" `
