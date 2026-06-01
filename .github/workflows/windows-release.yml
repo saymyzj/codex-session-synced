@@ -1,13 +1,6 @@
 name: Windows release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/windows-release.yml"
-      - "docs/release/v1.2.3.md"
-      - "docs/release/v1.2.3-en.md"
   workflow_dispatch:
 
 permissions:
