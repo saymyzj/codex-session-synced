@@ -25,10 +25,11 @@ struct PendingRepairsView: View {
         SoftPanel {
             VStack(spacing: 0) {
                 row(viewModel.l10n.text("目标 Provider", "Target Provider"), viewModel.scanResult?.providerInfo.provider ?? "-")
-                row(viewModel.l10n.text("待修改 Provider 的 SQLite 记录", "SQLite provider rows"), "\(viewModel.scanResult?.sqliteProviderUpdates.count ?? 0)")
-                row(viewModel.l10n.text("待修改 Provider 的 rollout 文件", "Rollout files"), "\(viewModel.scanResult?.rolloutRepairs.count ?? 0)")
-                row(viewModel.l10n.text("待补充的索引条目", "Missing index entries"), "\(viewModel.scanResult?.indexRepairs.count ?? 0)")
-                row(viewModel.l10n.text("兼容性字段修复", "Compatibility rows"), "\(viewModel.scanResult?.sqliteCompatibilityUpdates.count ?? 0)", last: true)
+                row(viewModel.l10n.text("按 rollout 修正 Provider 的 SQLite 记录", "SQLite provider rows matched to rollout"), "\(viewModel.scanResult?.sqliteProviderUpdates.count ?? 0)")
+                row(viewModel.l10n.text("待写入短标题", "Sidebar title rows"), "\(viewModel.scanResult?.sqliteTitleRepairs.count ?? 0)")
+                row(viewModel.l10n.text("待修复更新时间", "Timestamp rows"), "\((viewModel.scanResult?.sqliteTimestampRepairs.count ?? 0) + (viewModel.scanResult?.rolloutMtimeRepairs.count ?? 0))")
+                row(viewModel.l10n.text("待重建索引条目", "Index entries to rebuild"), "\(viewModel.scanResult?.indexRepairs.count ?? 0)")
+                row(viewModel.l10n.text("全局 UI 状态变更", "Global UI state changes"), "\(viewModel.scanResult?.globalStateRepair?.changes.count ?? 0)", last: true)
             }
         }
     }
@@ -39,7 +40,7 @@ struct PendingRepairsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(viewModel.l10n.text("备份模式", "Backup Mode"))
                         .font(.system(size: 16, weight: .semibold))
-                    Text(viewModel.l10n.text("轻简备份只保存必要回滚数据；全量备份会额外保存 sessions。", "Lightweight stores rollback data; full also copies sessions."))
+                    Text(viewModel.l10n.text("轻量备份只保存必要回滚数据；全量备份会额外保存 sessions。", "Lightweight stores rollback data; full also copies sessions."))
                         .font(.system(size: 13))
                         .foregroundStyle(DS.muted)
                 }
@@ -68,36 +69,42 @@ struct PendingRepairsView: View {
                     .font(.system(size: 16, weight: .semibold))
 
                 if let result = viewModel.scanResult, result.hasRepairs {
-                    let rows = result.sqliteProviderUpdates.prefix(8)
+                    let rows = previewRows(result: result).prefix(10)
                     if rows.isEmpty {
                         EmptyState(
                             image: "doc.badge.gearshape",
-                            title: viewModel.l10n.text("没有 Provider 记录需要修改", "No provider rows need changes"),
-                            message: viewModel.l10n.text("当前主要待修复项是索引或兼容字段。确认后会先创建备份，再补齐可见性数据。", "Current repairs are index or compatibility updates. A backup is created before applying them."),
+                            title: viewModel.l10n.text("没有可预览的写入项", "No previewable writes"),
+                            message: viewModel.l10n.text("确认后会先创建备份，再写入必要的侧边栏摘要数据。", "A backup is created before writing sidebar summary data."),
                             actionTitle: nil,
                             actionImage: "arrow.right",
                             action: nil
                         )
                     }
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, thread in
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                         HStack(spacing: 12) {
-                            Image(systemName: "cylinder.split.1x2")
+                            Image(systemName: item.icon)
                                 .foregroundStyle(DS.blue)
                                 .frame(width: 34, height: 34)
                                 .background(DS.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
-                            Text(displayTitle(for: thread))
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(DS.ink)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.title)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(DS.ink)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Text(item.detail)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(DS.muted)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
                             Spacer()
 
-                        Text("\(thread.modelProvider) -> \(result.providerInfo.provider)")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(DS.muted)
-                            .contentTransition(.opacity)
+                            Text(item.kind)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(DS.muted)
+                                .lineLimit(1)
                         }
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
@@ -106,8 +113,8 @@ struct PendingRepairsView: View {
                         .animation(AppMotion.smooth.delay(Double(index) * 0.035), value: rows.count)
                         Divider().opacity(0.35)
                     }
-                    if result.sqliteProviderUpdates.count > 8 {
-                        Text(viewModel.l10n.text("还有 \(result.sqliteProviderUpdates.count - 8) 条记录未显示。", "\(result.sqliteProviderUpdates.count - 8) more rows hidden."))
+                    if previewRows(result: result).count > 10 {
+                        Text(viewModel.l10n.text("还有 \(previewRows(result: result).count - 10) 条记录未显示。", "\(previewRows(result: result).count - 10) more rows hidden."))
                             .font(.system(size: 12))
                             .foregroundStyle(DS.muted)
                     }
@@ -115,7 +122,7 @@ struct PendingRepairsView: View {
                     EmptyState(
                         image: "checkmark.circle",
                         title: viewModel.l10n.text("当前没有待修复项", "No pending repairs"),
-                        message: viewModel.l10n.text("会话历史已经与当前 Provider 对齐。", "Conversation history is already aligned with the current provider."),
+                        message: viewModel.l10n.text("侧边栏会话摘要状态正常。", "Sidebar conversation summaries look healthy."),
                         actionTitle: viewModel.l10n.text("重新扫描", "Scan Again"),
                         actionImage: "magnifyingglass"
                     ) {
@@ -141,11 +148,78 @@ struct PendingRepairsView: View {
         }
     }
 
-    private func displayTitle(for thread: ThreadRow) -> String {
-        let title = thread.title
+    private struct PreviewItem: Identifiable {
+        var id: String
+        var icon: String
+        var kind: String
+        var title: String
+        var detail: String
+    }
+
+    private func previewRows(result: ScanResult) -> [PreviewItem] {
+        var items: [PreviewItem] = []
+        items += result.sqliteProviderUpdates.map {
+            PreviewItem(
+                id: "provider-\($0.thread.id)",
+                icon: "cylinder.split.1x2",
+                kind: "Provider",
+                title: displayTitle($0.thread.title, fallback: $0.thread.id),
+                detail: "\($0.thread.modelProvider) -> \($0.targetProvider)"
+            )
+        }
+        items += result.sqliteTitleRepairs.map {
+            PreviewItem(
+                id: "title-\($0.threadID)",
+                icon: "text.badge.checkmark",
+                kind: viewModel.l10n.text("标题", "Title"),
+                title: displayTitle($0.targetTitle, fallback: $0.threadID),
+                detail: displayTitle($0.currentTitle, fallback: viewModel.l10n.text("空标题", "empty title"))
+            )
+        }
+        items += result.sqliteTimestampRepairs.map {
+            PreviewItem(
+                id: "time-\($0.threadID)",
+                icon: "clock.arrow.circlepath",
+                kind: viewModel.l10n.text("时间", "Time"),
+                title: displayTitle($0.title, fallback: $0.threadID),
+                detail: "\($0.currentUpdatedAtMs) -> \($0.targetUpdatedAtMs)"
+            )
+        }
+        items += result.rolloutMtimeRepairs.map {
+            PreviewItem(
+                id: "mtime-\($0.rolloutPath)",
+                icon: "doc.badge.clock",
+                kind: "mtime",
+                title: displayTitle($0.title, fallback: $0.threadID),
+                detail: "\($0.currentMtimeMs) -> \($0.targetMtimeMs)"
+            )
+        }
+        items += result.indexRepairs.prefix(1).map {
+            PreviewItem(
+                id: "index-\($0.threadID)",
+                icon: "list.bullet.rectangle",
+                kind: viewModel.l10n.text("索引", "Index"),
+                title: viewModel.l10n.text("重建 session_index.jsonl", "Rebuild session_index.jsonl"),
+                detail: viewModel.l10n.text("\(result.indexRepairs.count) 条 resume-compatible 会话", "\(result.indexRepairs.count) resume-compatible threads")
+            )
+        }
+        items += (result.globalStateRepair?.changes ?? []).enumerated().map { offset, change in
+            PreviewItem(
+                id: "global-\(offset)",
+                icon: "sidebar.leading",
+                kind: viewModel.l10n.text("UI 状态", "UI State"),
+                title: change,
+                detail: ".codex-global-state.json"
+            )
+        }
+        return items
+    }
+
+    private func displayTitle(_ value: String, fallback: String) -> String {
+        let title = value
             .split(whereSeparator: { $0.isNewline })
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""
-        return title.isEmpty ? thread.id : title
+        return title.isEmpty ? fallback : title
     }
 }

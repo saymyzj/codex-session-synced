@@ -2,35 +2,39 @@
 
 ## 1. 产品定位
 
-Codex Synced 是一个 macOS 桌面应用，用于修复 Codex 在切换官方 OAuth
-认证和第三方 API 中转站后出现的会话历史不可见问题。
+Codex Synced 是一个 Windows / macOS 桌面应用，用于修复 Codex Desktop
+本地侧边栏历史不可见、标题显示为“新对话”、项目缺失和排序异常问题。
 
 本项目中的“同步”特指：
 
-> 将本地 Codex 历史会话的 Provider 字段动态对齐到当前
-> `config.toml` 使用的 Provider，使历史会话重新出现在当前模式下。
+> 修复 Codex Desktop 侧边栏摘要所依赖的本地状态：SQLite 线程摘要、
+> `session_index.jsonl`、rollout 文件 mtime、短标题和全局 UI 状态。
 
 它不是云同步、Git 同步或多设备同步工具。
 
 ## 2. 问题背景
 
-Codex 会按照 `model_provider` 对本地历史会话分桶展示：
+早期版本把问题简化成 Provider 分桶：Codex 会按照 `model_provider`
+区分一部分本地历史。但 2026-06 的实际故障证明，Desktop 侧边栏还依赖
+app-server `thread/list` 摘要、SQLite `threads.title`、`updated_at_ms`、
+rollout 文件 mtime、`session_index.jsonl` 和 `.codex-global-state.json`。
 
 | 使用模式 | `config.toml` 根级 `model_provider` | 新会话 Provider |
 | --- | --- | --- |
 | 官方 OAuth 认证 | 通常不存在 | `openai` |
 | 第三方 API 中转站 | `custom` 或其他值 | 对应配置值 |
 
-用户通过 CC Switch 切换模式后，Codex 只展示当前 Provider 桶中的历史。
-另一个桶中的会话仍然存在，但在侧边栏中看起来像“丢失”。
+当 `threads.title` 为空或等于 `first_user_message` 时，`thread/list` 可能返回
+`name:null`，Desktop 退化显示“新对话”。如果修复工具批量触碰 rollout 文件，
+默认扫描路径还会按错误 mtime 排序，出现大量会话同一天、顺序混乱的问题。
 
 ## 3. 核心目标
 
-1. 自动识别当前 Codex Provider。
+1. 自动识别当前 Codex Provider 和状态库。
 2. 扫描本地历史会话，统计待修复项。
 3. 在用户确认后创建备份。
-4. 将历史 Provider 动态对齐到当前 Provider。
-5. 修复必要的历史可见性索引。
+4. 仅在 rollout metadata 证明 SQLite provider 错误时修复 Provider。
+5. 修复短标题、更新时间、rollout mtime、会话索引和全局 UI 状态。
 6. 修复完成后允许用户直接打开 Codex。
 
 ## 4. Provider 判定规则
@@ -60,7 +64,16 @@ model_provider = "openai_http"
 - `OpenAI API Key`
 - `第三方 API`
 
-但修复目标始终由当前根级 Provider 判定规则决定。
+Provider 修复不得由当前根级 Provider 批量决定。正确规则是：
+
+```text
+如果 rollout session_meta.payload.model_provider 存在，
+且与 threads.model_provider 不一致：
+    将 threads.model_provider 修正为 rollout 中的 provider
+
+不得把所有历史批量改成当前 config.toml provider。
+不得为 Provider 修复改写 rollout 第一行。
+```
 
 ## 5. 扫描范围
 
@@ -81,7 +94,7 @@ model_provider = "openai_http"
 
 ## 6. 修复范围
 
-### 6.1 Provider 动态对齐
+### 6.1 Provider 错配修复
 
 用户确认后，应用执行：
 
@@ -91,28 +104,41 @@ model_provider = "openai_http"
 threads.model_provider
 ```
 
-2. 更新普通会话和归档会话 rollout 文件第一行中的：
+2. 修复目标必须来自对应 rollout 第一行 metadata。
+3. 保持 rollout 文件内容和会话正文不变。
+
+### 6.2 侧边栏摘要修复
+
+应用应检查并按需修复：
 
 ```text
-session_meta.payload.model_provider
+threads.title
+threads.updated_at
+threads.updated_at_ms
+rollout JSONL 文件 mtime
+session_index.jsonl
+.codex-global-state.json selected-remote-host-id
+.codex-global-state.json remote-control auto-connect
+.codex-global-state.json project-order
 ```
 
-3. 保持会话正文不变。
+`threads.title` 应写入短标题，且必须与 `first_user_message` 不同，避免
+`thread/list` 返回 `name:null`。`session_index.jsonl` 应按 resume-compatible
+活跃会话清单重建，而不是只追加缺失项；已有重复、过期、时间漂移条目都应被清理。
 
-### 6.2 可见性兼容修复
+### 6.3 保守兼容
 
-为兼容旧数据和 Codex Desktop 的历史索引，应用应检查并按需修复：
+不得为了“可见性”批量伪造：
 
 ```text
 threads.has_user_event
 threads.cwd
 threads.thread_source
-session_index.jsonl 缺失条目
 ```
 
-`session_index.jsonl` 只补充缺失条目，不覆盖已有条目的用户数据。
+这些字段只有在未来有官方 schema 证据时才能加入修复。
 
-### 6.3 明确禁止修改
+### 6.4 明确禁止修改
 
 应用不得修改：
 
@@ -129,7 +155,7 @@ session_index.jsonl 缺失条目
 
 用户可以选择两种备份模式。
 
-### 7.1 轻简备份
+### 7.1 轻量备份
 
 默认模式，默认最多保留 `5` 份。
 
@@ -140,16 +166,18 @@ session_index.jsonl 缺失条目
 - `config.toml`
 - `session_index.jsonl`
 - 必要的全局状态小文件
-- 每个待改 rollout 文件的原始第一行 metadata
+- rollout 文件原始 mtime
+- 每个待改 rollout 文件的原始第一行 metadata（仅兼容旧备份）
 - 备份描述文件
 
-不重复保存会话正文。因为 Provider 修复只改 rollout 第一行，回滚时恢复原始第一行即可。
+不重复保存会话正文。当前修复不会改写 rollout 内容；轻量备份只保存状态库、索引、
+全局状态和 mtime 回滚数据。
 
 ### 7.2 全量备份
 
 默认最多保留 `3` 份。
 
-除轻简备份内容外，额外保存：
+除轻量备份内容外，额外保存：
 
 - 完整 `sessions`
 - 完整 `archived_sessions`
@@ -191,6 +219,7 @@ session_index.jsonl 缺失条目
 - 最近一次修复时间
 - 当前扫描状态
 - 最近备份记录
+- Provider 错配、短标题、时间、索引和 UI 状态指标
 
 主操作：
 
@@ -203,7 +232,7 @@ session_index.jsonl 缺失条目
 当没有待修复项时，主状态显示：
 
 ```text
-会话历史已对齐
+侧边栏状态正常
 ```
 
 ### 9.2 待修复项
@@ -212,9 +241,11 @@ session_index.jsonl 缺失条目
 
 | 项目 | 数量 |
 | --- | ---: |
-| 待修改 Provider 的 rollout 文件 | 动态统计 |
-| 待修改的 SQLite 记录 | 动态统计 |
-| 待补充的索引条目 | 动态统计 |
+| 按 rollout 修正 Provider 的 SQLite 记录 | 动态统计 |
+| 待写入短标题 | 动态统计 |
+| 待修复更新时间 | 动态统计 |
+| 待重建索引条目 | 动态统计 |
+| 全局 UI 状态变更 | 动态统计 |
 | 当前目标 Provider | 当前配置值 |
 
 底部操作：
@@ -246,19 +277,19 @@ session_index.jsonl 缺失条目
 - 界面语言
 - Codex 本地目录
 - SQLite 目录
-- 默认备份模式：`轻简备份 / 全量备份`
-- 轻简备份最大数量，默认 `5`
+- 默认备份模式：`轻量备份 / 全量备份`
+- 轻量备份最大数量，默认 `5`
 - 全量备份最大数量，默认 `3`
 - 修复完成后自动打开 Codex
 
 ## 10. 完整用户流程
 
 ```text
-用户通过 CC Switch 切换 Provider
+用户发现 Codex Desktop 侧边栏缺项目、显示“新对话”或时间排序异常
         ↓
 打开 Codex Synced
         ↓
-应用读取当前 Provider 并执行 dry-run
+应用读取本地状态并执行 dry-run
         ↓
 展示待修复摘要
         ↓
@@ -266,7 +297,7 @@ session_index.jsonl 缺失条目
         ↓
 创建轻简或全量备份
         ↓
-对齐 SQLite、rollout metadata 和必要索引
+修复 SQLite 摘要、rollout mtime、索引和 UI 状态
         ↓
 验证修复结果
         ↓
@@ -280,9 +311,9 @@ session_index.jsonl 缺失条目
 - Provider 自动识别
 - `state_*.sqlite` 自动识别
 - dry-run 扫描
-- Provider 动态对齐
-- 可见性兼容修复
-- 轻简备份
+- Provider 错配修复（以 rollout 为准）
+- 侧边栏标题、时间、索引和 UI 状态修复
+- 轻量备份
 - 全量备份
 - 两种备份数量上限和自动轮换
 - 备份恢复
@@ -296,7 +327,7 @@ session_index.jsonl 缺失条目
 - 多设备同步
 - 修改 CC Switch 配置
 - 修改 Codex.app 本体
-- 自动调整旧会话时间排序
+- 改写 rollout 会话正文
 
 ## 12. 后续评估项
 

@@ -11,9 +11,9 @@
     <RootNamespace>CodexSynced.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Resources\AppIcon.ico</ApplicationIcon>
-    <Version>1.2.4</Version>
+    <Version>1.2.5</Version>
     <Authors>saymyzj</Authors>
-    <Description>Repair local Codex conversation visibility after switching providers.</Description>
+    <Description>Repair local Codex Desktop sidebar history summaries.</Description>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
   </PropertyGroup>

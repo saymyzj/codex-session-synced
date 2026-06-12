@@ -51,7 +51,7 @@ final class AppViewModel: ObservableObject {
         if showFeedback {
             showNotice(
                 title: l10n.text("正在扫描", "Scanning"),
-                message: l10n.text("正在检查当前 Provider 和本地会话历史。", "Checking the active provider and local history."),
+                message: l10n.text("正在检查本地侧边栏摘要和会话历史。", "Checking local sidebar summaries and conversation history."),
                 tone: .info,
                 isLoading: true,
                 autoDismiss: false
@@ -66,7 +66,7 @@ final class AppViewModel: ObservableObject {
                 showNotice(
                     title: l10n.text("扫描完成", "Scan Complete"),
                     message: count == 0
-                        ? l10n.text("会话历史已与当前 Provider 对齐。", "History is aligned with the active provider.")
+                        ? l10n.text("侧边栏会话摘要状态正常。", "Sidebar conversation summaries look healthy.")
                         : l10n.text("发现 \(count) 项待处理，请查看修复方案。", "Found \(count) items. Review the repair plan."),
                     tone: count == 0 ? .success : .warning
                 )
@@ -101,7 +101,7 @@ final class AppViewModel: ObservableObject {
             lastScanAt = Date()
             showNotice(
                 title: l10n.text("修复完成", "Repair Complete"),
-                message: l10n.text("会话历史已与当前 Provider 对齐，并已创建备份。", "History is aligned and a backup was created."),
+                message: l10n.text("侧边栏会话摘要已修复，并已创建备份。", "Sidebar conversation summaries were repaired and backed up."),
                 tone: .success
             )
             if settings.openCodexAfterRepair {
@@ -161,6 +161,10 @@ final class AppViewModel: ObservableObject {
             + scanResult.sqliteCompatibilityUpdates.count
             + scanResult.rolloutRepairs.count
             + scanResult.indexRepairs.count
+            + scanResult.sqliteTimestampRepairs.count
+            + scanResult.sqliteTitleRepairs.count
+            + scanResult.rolloutMtimeRepairs.count
+            + (scanResult.globalStateRepair?.changes.count ?? 0)
     }
 
     var isBusy: Bool {

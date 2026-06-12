@@ -263,10 +263,13 @@ internal sealed class MainWindow : Window
         if (_busy) status = Blue;
         var top = Panel(StatusPanel(status));
         var metrics = new UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 10) };
-        metrics.Children.Add(Metric(T("待修复 Provider", "Provider Updates"), _scan?.SqliteProviderUpdates.Count ?? 0, T("SQLite 记录", "SQLite rows")));
-        metrics.Children.Add(Metric("Rollout Metadata", _scan?.RolloutRepairs.Count ?? 0, T("只修改第一行", "First line only")));
-        metrics.Children.Add(Metric(T("索引补齐", "Index Repairs"), _scan?.IndexRepairs.Count ?? 0, "session_index.jsonl"));
-        return Page(T("会话历史修复", "Conversation History Repair"), T("根据当前 Codex Provider 动态对齐本地历史。", "Match local history to the active Codex provider."), top, metrics, Panel(ActionPanel()));
+        metrics.Children.Add(Metric("Provider", _scan?.SqliteProviderUpdates.Count ?? 0, T("按 rollout 回写 SQLite", "SQLite follows rollout")));
+        metrics.Children.Add(Metric(T("标题", "Titles"), _scan?.SqliteTitleRepairs.Count ?? 0, T("避免新对话", "Avoid untitled rows")));
+        metrics.Children.Add(Metric(T("时间", "Timestamps"), (_scan?.SqliteTimestampRepairs.Count ?? 0) + (_scan?.RolloutMtimeRepairs.Count ?? 0), "SQLite + mtime"));
+        metrics.Children.Add(Metric(T("索引", "Index"), _scan?.IndexRepairs.Count ?? 0, "session_index.jsonl"));
+        metrics.Children.Add(Metric(T("UI 状态", "UI State"), _scan?.GlobalStateRepair?.Changes.Count ?? 0, ".codex-global-state.json"));
+        metrics.Children.Add(Metric(T("兼容字段", "Compatibility"), _scan?.SqliteCompatibilityUpdates.Count ?? 0, T("保守禁用", "Conservative")));
+        return Page(T("会话历史修复", "Conversation History Repair"), T("修复 Codex Desktop 侧边栏标题、时间、索引和本地 UI 状态。", "Repair Codex Desktop sidebar titles, timestamps, index, and local UI state."), top, metrics, Panel(ActionPanel()));
     }
 
     private UIElement StatusPanel(WpfBrush status)
@@ -322,8 +325,8 @@ internal sealed class MainWindow : Window
         var repairs = _scan?.HasRepairs == true;
         var failed = _scanError is not null;
         var s = new StackPanel();
-        s.Children.Add(Text(_busy ? T("正在处理", "Working") : failed ? T("扫描遇到问题", "Scan Needs Attention") : repairs ? T("发现待修复项", "Repairs Found") : T("会话历史已对齐", "History Is Aligned"), 16, FontWeights.SemiBold, Ink));
-        var sub = Text(_busy ? T("正在检查本地历史，请稍候。", "Checking local history. Please wait.") : failed ? _scanError! : repairs ? T($"发现 {_scan!.PendingCount} 项待处理。下一步查看变更并选择备份模式。", $"Found {_scan!.PendingCount} items. Review changes and select a backup mode.") : T("当前没有待处理项。切换 Provider 后，重新扫描即可检查历史。", "No pending items. Scan again after switching providers."), 12, FontWeights.Normal, failed ? Warn : Muted);
+        s.Children.Add(Text(_busy ? T("正在处理", "Working") : failed ? T("扫描遇到问题", "Scan Needs Attention") : repairs ? T("发现待修复项", "Repairs Found") : T("侧边栏状态正常", "Sidebar Looks Healthy"), 16, FontWeights.SemiBold, Ink));
+        var sub = Text(_busy ? T("正在检查本地历史，请稍候。", "Checking local history. Please wait.") : failed ? _scanError! : repairs ? T($"发现 {_scan!.PendingCount} 项侧边栏摘要问题。下一步查看变更并选择备份模式。", $"Found {_scan!.PendingCount} sidebar summary issues. Review changes and select a backup mode.") : T("当前没有待处理项。重新扫描即可检查本地历史。", "No pending items. Scan again to check local history state."), 12, FontWeights.Normal, failed ? Warn : Muted);
         sub.Margin = new Thickness(0, 4, 0, 14);
         sub.TextWrapping = TextWrapping.Wrap;
         s.Children.Add(sub);
@@ -343,15 +346,16 @@ internal sealed class MainWindow : Window
     {
         var summary = Panel(Summary(
             (T("目标 Provider", "Target Provider"), _scan?.ProviderInfo.Provider ?? "-"),
-            (T("待修改 Provider 的 SQLite 记录", "SQLite provider rows"), (_scan?.SqliteProviderUpdates.Count ?? 0).ToString()),
-            (T("待修改 Provider 的 rollout 文件", "Rollout files"), (_scan?.RolloutRepairs.Count ?? 0).ToString()),
-            (T("待补充的索引条目", "Missing index entries"), (_scan?.IndexRepairs.Count ?? 0).ToString()),
-            (T("兼容性字段修复", "Compatibility rows"), (_scan?.SqliteCompatibilityUpdates.Count ?? 0).ToString())));
+            (T("按 rollout 修正 Provider 的 SQLite 记录", "SQLite provider rows matched to rollout"), (_scan?.SqliteProviderUpdates.Count ?? 0).ToString()),
+            (T("待写入短标题", "Sidebar title rows"), (_scan?.SqliteTitleRepairs.Count ?? 0).ToString()),
+            (T("待修复更新时间", "Timestamp rows"), ((_scan?.SqliteTimestampRepairs.Count ?? 0) + (_scan?.RolloutMtimeRepairs.Count ?? 0)).ToString()),
+            (T("待重建索引条目", "Index entries to rebuild"), (_scan?.IndexRepairs.Count ?? 0).ToString()),
+            (T("全局 UI 状态变更", "Global UI state changes"), (_scan?.GlobalStateRepair?.Changes.Count ?? 0).ToString())));
         var choice = new Grid();
         choice.ColumnDefinitions.Add(new ColumnDefinition());
         choice.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         choice.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        choice.Children.Add(TextBlockPair(T("备份模式", "Backup Mode"), T("轻简备份只保存必要回滚数据；全量备份会额外保存 sessions。", "Lightweight stores rollback data; full also copies sessions.")));
+        choice.Children.Add(TextBlockPair(T("备份模式", "Backup Mode"), T("轻量备份只保存必要回滚数据；全量备份会额外保存 sessions。", "Lightweight stores rollback data; full also copies sessions.")));
         var mode = ModeSwitch();
         mode.Margin = new Thickness(16, 0, 0, 0);
         var repair = Button(T("备份并修复", "Back Up and Repair"), true, RepairAsync, !(_scan?.HasRepairs ?? false) || _busy);
@@ -365,11 +369,12 @@ internal sealed class MainWindow : Window
     {
         var s = new StackPanel();
         s.Children.Add(Text(T("预览", "Preview"), 16, FontWeights.SemiBold, Ink));
-        if (_scan is not { HasRepairs: true }) { s.Children.Add(Empty("✓", T("当前没有待修复项", "No pending repairs"), T("会话历史已经与当前 Provider 对齐。", "Conversation history is already aligned with the current provider."))); return s; }
-        var rows = _scan.SqliteProviderUpdates.Take(8).ToList();
-        if (rows.Count == 0) s.Children.Add(Empty("◇", T("没有 Provider 记录需要修改", "No provider rows need changes"), T("当前主要待修复项是索引或兼容字段。", "Current repairs are index or compatibility updates.")));
+        if (_scan is not { HasRepairs: true }) { s.Children.Add(Empty("✓", T("当前没有待修复项", "No pending repairs"), T("侧边栏会话摘要状态正常。", "Sidebar conversation summaries look healthy."))); return s; }
+        var rows = PreviewRows(_scan).Take(10).ToList();
+        if (rows.Count == 0) s.Children.Add(Empty("◇", T("没有可预览的写入项", "No previewable writes"), T("确认后会先创建备份，再写入必要的侧边栏摘要数据。", "A backup is created before writing sidebar summary data.")));
         foreach (var row in rows) s.Children.Add(PreviewRow(row));
-        if (_scan.SqliteProviderUpdates.Count > 8) s.Children.Add(Text(T($"还有 {_scan.SqliteProviderUpdates.Count - 8} 条记录未显示。", $"{_scan.SqliteProviderUpdates.Count - 8} more rows hidden."), 12, FontWeights.Normal, Muted));
+        var hidden = PreviewRows(_scan).Count - rows.Count;
+        if (hidden > 0) s.Children.Add(Text(T($"还有 {hidden} 条记录未显示。", $"{hidden} more rows hidden."), 12, FontWeights.Normal, Muted));
         return s;
     }
 
@@ -394,7 +399,7 @@ internal sealed class MainWindow : Window
         s.Children.Add(Divider());
         s.Children.Add(SettingsRow(T("默认备份模式", "Default Backup"), ModeSwitch()));
         s.Children.Add(Divider());
-        s.Children.Add(Counter(T("轻简备份最大数量", "Lightweight Limit"), () => _settings.LightweightLimit, v => _settings.LightweightLimit = v, 1, 30));
+        s.Children.Add(Counter(T("轻量备份最大数量", "Lightweight Limit"), () => _settings.LightweightLimit, v => _settings.LightweightLimit = v, 1, 30));
         s.Children.Add(Divider());
         s.Children.Add(Counter(T("全量备份最大数量", "Full Limit"), () => _settings.FullLimit, v => _settings.FullLimit = v, 1, 12));
         s.Children.Add(Divider());
@@ -441,10 +446,10 @@ internal sealed class MainWindow : Window
 
     private async void RepairAsync()
     {
-        if (_scan is null || !_scan.HasRepairs) { Notice(T("当前没有待修复项", "No Pending Repairs"), T("会话历史已经与当前 Provider 对齐。", "Conversation history is already aligned."), Ok); return; }
+        if (_scan is null || !_scan.HasRepairs) { Notice(T("当前没有待修复项", "No Pending Repairs"), T("侧边栏会话摘要状态正常。", "Sidebar conversation summaries look healthy."), Ok); return; }
         if (System.Windows.MessageBox.Show(T($"即将创建备份并修复 {_scan.PendingCount} 项。继续吗？", $"A backup will be created and {_scan.PendingCount} items repaired. Continue?"), "Codex Synced", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
         _busy = true; Show(CurrentView(), false);
-        try { var scan = _scan; await Task.Run(() => _service.Repair(scan, SnapshotSettings(), _backupMode)); Notice(T("修复完成", "Repair Complete"), T("会话历史已经与当前 Provider 对齐。", "Conversation history is aligned with the active provider."), Ok); await ScanAsync(); if (_settings.OpenCodexAfterRepair) RepairService.OpenCodex(); }
+        try { var scan = _scan; await Task.Run(() => _service.Repair(scan, SnapshotSettings(), _backupMode)); Notice(T("修复完成", "Repair Complete"), T("侧边栏会话摘要已经修复。", "Sidebar conversation summaries were repaired."), Ok); await ScanAsync(); if (_settings.OpenCodexAfterRepair) RepairService.OpenCodex(); }
         catch (Exception ex) { _busy = false; Notice(T("修复失败", "Repair Failed"), ex.Message, Warn); }
     }
 
@@ -456,8 +461,8 @@ internal sealed class MainWindow : Window
     }
 
     private void SaveSettings() { _settings.DefaultBackupMode = _backupMode; _settings.Save(); Notice(T("设置已保存", "Settings Saved"), T("已保存到本机配置。", "Saved to local app settings."), Ok); _ = ScanAsync(); }
-    private string StatusTitle() => _busy ? T("正在扫描本地历史", "Scanning Local History") : _scanError is not null ? T("扫描失败", "Scan Failed") : _scan is null ? T("正在识别当前环境", "Detecting Environment") : _scan.HasRepairs ? T($"发现 {_scan.PendingCount} 项待处理", $"{_scan.PendingCount} Items Need Attention") : T("当前环境已识别", "Environment Detected");
-    private string StatusSubtitle() => _busy ? T("正在检查本地历史，请稍候。", "Checking local history. Please wait.") : _scanError is not null ? _scanError : _scan?.HasRepairs == true ? T("请查看待修复项，确认变更后执行备份并修复。", "Review pending changes, then create a backup and repair.") : T("已读取当前登录态和 Provider。不会修改 Token、API Key、第三方 URL 或会话正文。", "The active login and provider are detected. Tokens, keys, URLs, and message bodies are never changed.");
+    private string StatusTitle() => _busy ? T("正在扫描本地历史", "Scanning Local History") : _scanError is not null ? T("扫描失败", "Scan Failed") : _scan is null ? T("正在识别当前环境", "Detecting Environment") : _scan.HasRepairs ? T($"发现 {_scan.PendingCount} 项待处理", $"{_scan.PendingCount} Items Need Attention") : T("侧边栏状态正常", "Sidebar Looks Healthy");
+    private string StatusSubtitle() => _busy ? T("正在检查本地历史，请稍候。", "Checking local history. Please wait.") : _scanError is not null ? _scanError : _scan?.HasRepairs == true ? T("请查看待修复项，确认变更后执行备份并修复。", "Review pending changes, then create a backup and repair.") : T("已读取本地会话摘要。不会修改 Token、API Key、第三方 URL 或会话正文。", "Local conversation summaries are inspected. Tokens, keys, URLs, and message bodies are never changed.");
 
     private void Notice(string title, string message, WpfBrush color)
     {
@@ -588,22 +593,37 @@ internal sealed class MainWindow : Window
         return b;
     }
 
-    private Border PreviewRow(ThreadRow row)
+    private sealed record PreviewItem(string Kind, string Icon, string Title, string Detail);
+
+    private List<PreviewItem> PreviewRows(ScanResult scan)
+    {
+        var rows = new List<PreviewItem>();
+        rows.AddRange(scan.SqliteProviderUpdates.Select(repair => new PreviewItem("Provider", "▦", PreviewTitle(repair.Thread.Title, repair.Thread.Id), $"{repair.Thread.ModelProvider} -> {repair.TargetProvider}")));
+        rows.AddRange(scan.SqliteTitleRepairs.Select(repair => new PreviewItem(T("标题", "Title"), "T", PreviewTitle(repair.TargetTitle, repair.ThreadId), PreviewTitle(repair.CurrentTitle, T("空标题", "empty title")))));
+        rows.AddRange(scan.SqliteTimestampRepairs.Select(repair => new PreviewItem(T("时间", "Time"), "◷", PreviewTitle(repair.Title, repair.ThreadId), $"{repair.CurrentUpdatedAtMs} -> {repair.TargetUpdatedAtMs}")));
+        rows.AddRange(scan.RolloutMtimeRepairs.Select(repair => new PreviewItem("mtime", "◴", PreviewTitle(repair.Title, repair.ThreadId), $"{repair.CurrentMtimeMs} -> {repair.TargetMtimeMs}")));
+        if (scan.IndexRepairs.Count > 0)
+            rows.Add(new(T("索引", "Index"), "≡", T("重建 session_index.jsonl", "Rebuild session_index.jsonl"), T($"{scan.IndexRepairs.Count} 条会话", $"{scan.IndexRepairs.Count} threads")));
+        rows.AddRange((scan.GlobalStateRepair?.Changes ?? []).Select(change => new PreviewItem(T("UI 状态", "UI State"), "▤", change, ".codex-global-state.json")));
+        return rows;
+    }
+
+    private Border PreviewRow(PreviewItem item)
     {
         var grid = new Grid { Margin = new Thickness(0, 8, 0, 0), MinHeight = 36 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) }); grid.ColumnDefinitions.Add(new ColumnDefinition()); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.Children.Add(SoftIcon("▦", Blue));
-        AddTo(grid, Text(PreviewTitle(row), 14, FontWeights.Medium, Ink), 1);
-        AddTo(grid, Text($"{row.ModelProvider} -> {_scan?.ProviderInfo.Provider}", 12, FontWeights.Normal, Muted, mono: true), 2);
+        grid.Children.Add(SoftIcon(item.Icon, Blue));
+        AddTo(grid, TextBlockPair(item.Title, item.Detail), 1);
+        AddTo(grid, Text(item.Kind, 12, FontWeights.Normal, Muted, mono: true), 2);
         return new Border { Padding = new Thickness(10), Background = Subtle, BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = grid };
     }
 
-    private static string PreviewTitle(ThreadRow row)
+    private static string PreviewTitle(string value, string fallback)
     {
-        var title = row.Title
+        var title = value
             .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .FirstOrDefault();
-        return string.IsNullOrWhiteSpace(title) ? row.Id : title;
+        return string.IsNullOrWhiteSpace(title) ? fallback : title;
     }
 
     private Border BackupRow(BackupRecord backup)
@@ -648,8 +668,7 @@ internal sealed class MainWindow : Window
     private void UpdateLanguageSegments() => UpdateSegments(_languageButtons.ToDictionary(x => x.Key, x => x.Value == _language));
     private static void UpdateSegments(Dictionary<WpfButton, bool> states) { foreach (var (button, selected) in states) { button.Background = selected ? Blue : WpfBrushes.Transparent; button.Foreground = selected ? WpfBrushes.White : Muted; button.BorderBrush = WpfBrushes.Transparent; button.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Medium; } }
     private void UpdateNav() { foreach (var button in _navButtons) { var selected = button.Tag is UiSection s && s == _section; button.Background = selected ? WpfBrushes.White : WpfBrushes.Transparent; button.Foreground = selected ? Ink : Muted; button.BorderBrush = selected ? Line : WpfBrushes.Transparent; button.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal; button.Effect = selected ? Shadow(.08, 10, 5) : null; } }
-    private string ModeTitle(BackupMode mode) => mode == BackupMode.Full ? T("全量备份", "Full") : T("轻简备份", "Lightweight");
+    private string ModeTitle(BackupMode mode) => mode == BackupMode.Full ? T("全量备份", "Full") : T("轻量备份", "Lightweight");
     private static string ShortDate(DateTime date) => date.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
     private static string FileSize(long bytes) { string[] units = ["B", "KB", "MB", "GB"]; var value = (double)bytes; var unit = 0; while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; } return $"{value:0.#} {units[unit]}"; }
 }
-

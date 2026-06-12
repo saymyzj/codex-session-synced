@@ -52,16 +52,20 @@ public final class CodexRepairService {
             threads = try db.queryThreads()
         }
 
-        let sqliteProviderUpdates = threads.filter { $0.modelProvider != providerInfo.provider }
-        let sqliteCompatibilityUpdates = threads.filter { !$0.hasUserEvent || $0.cwd.isEmpty || ($0.threadSource ?? "").isEmpty }
-        let rolloutRoots = [
-            codexHome.appendingPathComponent("sessions"),
-            codexHome.appendingPathComponent("archived_sessions")
-        ]
-        let rolloutRepairs = FileUtilities.rolloutFiles(under: rolloutRoots).compactMap {
-            RolloutRepairer.makeRepair(url: $0, targetProvider: providerInfo.provider)
-        }
-        let indexRepairs = missingIndexRepairs(codexHome: codexHome, threads: threads)
+        let rolloutInfo = SidebarRepairPlanner.rolloutInfoByPath(for: threads)
+        let sqliteProviderUpdates = SidebarRepairPlanner.providerRepairs(threads: threads, rollouts: rolloutInfo)
+        let sqliteCompatibilityUpdates: [ThreadRow] = []
+        let rolloutRepairs: [RolloutRepair] = []
+        let sqliteTimestampRepairs = SidebarRepairPlanner.timestampRepairs(threads: threads, rollouts: rolloutInfo)
+        let sqliteTitleRepairs = SidebarRepairPlanner.titleRepairs(threads: threads)
+        let rolloutMtimeRepairs = SidebarRepairPlanner.rolloutMtimeRepairs(threads: threads, rollouts: rolloutInfo)
+        let projectedThreads = SidebarRepairPlanner.projectedThreads(
+            threads: threads,
+            titleRepairs: sqliteTitleRepairs,
+            timestampRepairs: sqliteTimestampRepairs
+        )
+        let indexRepairs = SidebarRepairPlanner.indexRepairs(codexHome: codexHome, threads: projectedThreads)
+        let globalStateRepair = SidebarRepairPlanner.globalStateRepair(codexHome: codexHome, threads: projectedThreads)
         let backups = loadBackups(codexHome: codexHome)
         let lastRepairAt = backups.sorted { $0.createdAt > $1.createdAt }.first?.createdAt
 
@@ -73,6 +77,10 @@ public final class CodexRepairService {
             sqliteCompatibilityUpdates: sqliteCompatibilityUpdates,
             rolloutRepairs: rolloutRepairs,
             indexRepairs: indexRepairs,
+            sqliteTimestampRepairs: sqliteTimestampRepairs,
+            sqliteTitleRepairs: sqliteTitleRepairs,
+            rolloutMtimeRepairs: rolloutMtimeRepairs,
+            globalStateRepair: globalStateRepair,
             backups: backups,
             codexHome: codexHome,
             sqliteHome: sqliteHome,
@@ -87,12 +95,20 @@ public final class CodexRepairService {
 
         let backup = try createBackup(scan: scan, settings: settings, mode: mode)
         let db = try SQLiteDatabase(path: state.url.path, readonly: false)
-        try db.updateProvider(threadIDs: scan.sqliteProviderUpdates.map(\.id), provider: scan.providerInfo.provider)
+        try db.updateProviders(scan.sqliteProviderUpdates)
+        try db.updateTimestamps(scan.sqliteTimestampRepairs)
+        try db.updateTitles(scan.sqliteTitleRepairs)
         try db.updateCompatibility(threadIDs: scan.sqliteCompatibilityUpdates.map(\.id))
         for repair in scan.rolloutRepairs {
             try RolloutRepairer.apply(repair)
         }
-        try appendMissingIndexEntries(scan.indexRepairs, codexHome: scan.codexHome)
+        try SidebarRepairPlanner.applyRolloutMtimes(scan.rolloutMtimeRepairs)
+        if let globalStateRepair = scan.globalStateRepair {
+            try SidebarRepairPlanner.applyGlobalStateRepair(globalStateRepair, codexHome: scan.codexHome)
+        }
+        if !scan.indexRepairs.isEmpty {
+            try SidebarRepairPlanner.rebuildSessionIndex(scan.indexRepairs, codexHome: scan.codexHome)
+        }
         try rotateBackups(codexHome: scan.codexHome, mode: mode, limit: mode == .full ? settings.fullLimit : settings.lightweightLimit)
         return backup
     }
@@ -117,6 +133,9 @@ public final class CodexRepairService {
         }
         for item in manifest.rolloutFirstLines {
             try RolloutRepairer.restore(url: URL(fileURLWithPath: item.originalPath), firstLine: item.firstLine)
+        }
+        if let rolloutMtimes = manifest.rolloutMtimes {
+            try SidebarRepairPlanner.restoreRolloutMtimes(rolloutMtimes)
         }
     }
 
@@ -148,46 +167,6 @@ public final class CodexRepairService {
         .first
     }
 
-    private func missingIndexRepairs(codexHome: URL, threads: [ThreadRow]) -> [IndexRepair] {
-        let indexURL = codexHome.appendingPathComponent("session_index.jsonl")
-        let existing = existingIndexIDs(indexURL: indexURL)
-        return threads
-            .filter { !existing.contains($0.id) }
-            .map { IndexRepair(threadID: $0.id, title: $0.title, updatedAt: $0.updatedAt) }
-    }
-
-    private func existingIndexIDs(indexURL: URL) -> Set<String> {
-        guard let content = try? String(contentsOf: indexURL, encoding: .utf8) else { return [] }
-        var ids = Set<String>()
-        for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-            guard let data = line.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let id = object["id"] as? String else { continue }
-            ids.insert(id)
-        }
-        return ids
-    }
-
-    private func appendMissingIndexEntries(_ repairs: [IndexRepair], codexHome: URL) throws {
-        guard !repairs.isEmpty else { return }
-        let indexURL = codexHome.appendingPathComponent("session_index.jsonl")
-        if !FileManager.default.fileExists(atPath: indexURL.path) {
-            FileManager.default.createFile(atPath: indexURL.path, contents: nil)
-        }
-        let handle = try FileHandle(forWritingTo: indexURL)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
-        for repair in repairs {
-            let object: [String: Any] = [
-                "id": repair.threadID,
-                "thread_name": repair.title,
-                "updated_at": ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: TimeInterval(repair.updatedAt)))
-            ]
-            let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-            handle.write(data)
-            handle.write(Data("\n".utf8))
-        }
-    }
 }
 
 struct BackupManifest: Codable {
@@ -201,9 +180,15 @@ struct BackupManifest: Codable {
         var firstLine: String
     }
 
+    struct MtimeItem: Codable {
+        var originalPath: String
+        var modifiedAtMs: Int64
+    }
+
     var record: BackupRecord
     var files: [FileItem]
     var rolloutFirstLines: [FirstLineItem]
+    var rolloutMtimes: [MtimeItem]?
 }
 
 extension JSONEncoder {

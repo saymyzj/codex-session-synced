@@ -7,7 +7,7 @@
 | 文件 | 页面 | 用途 |
 | --- | --- | --- |
 | `01-repair-home.png` | 会话历史修复 | 展示当前登录态、动态 Provider、待修复数量和修复入口 |
-| `02-pending-repairs.png` | 待修复项 | 修复前预览变更并选择轻简备份或全量备份 |
+| `02-pending-repairs.png` | 待修复项 | 修复前预览变更并选择轻量备份或全量备份 |
 | `03-repair-progress.png` | 修复进度 | 展示扫描、备份、Provider 对齐、索引修复和结果验证 |
 | `04-backups.png` | 备份 | 查看本地备份、容量和修复摘要 |
 | `05-restore-confirmation.png` | 恢复确认 | 恢复本地备份前进行二次确认 |

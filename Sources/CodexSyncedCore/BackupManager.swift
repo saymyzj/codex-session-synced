@@ -32,7 +32,7 @@ extension CodexRepairService {
             targetProvider: scan.providerInfo.provider,
             sqliteProviderUpdates: scan.sqliteProviderUpdates.count,
             sqliteCompatibilityUpdates: scan.sqliteCompatibilityUpdates.count,
-            rolloutUpdates: scan.rolloutRepairs.count,
+            rolloutUpdates: scan.rolloutRepairs.count + scan.rolloutMtimeRepairs.count,
             indexInsertions: scan.indexRepairs.count,
             repairedAt: now
         )
@@ -63,6 +63,9 @@ extension CodexRepairService {
         let firstLines = scan.rolloutRepairs.map {
             BackupManifest.FirstLineItem(originalPath: $0.url.path, firstLine: $0.originalFirstLine)
         }
+        let mtimes = scan.rolloutMtimeRepairs.map {
+            BackupManifest.MtimeItem(originalPath: $0.rolloutPath, modifiedAtMs: $0.currentMtimeMs)
+        }
         let record = BackupRecord(
             directoryName: directoryName,
             createdAt: now,
@@ -72,13 +75,13 @@ extension CodexRepairService {
             sizeBytes: 0,
             path: directory.path
         )
-        let manifest = BackupManifest(record: record, files: files, rolloutFirstLines: firstLines)
+        let manifest = BackupManifest(record: record, files: files, rolloutFirstLines: firstLines, rolloutMtimes: mtimes)
         let manifestData = try JSONEncoder.codexSynced.encode(manifest)
         try manifestData.write(to: directory.appendingPathComponent("manifest.json"))
 
         var finalRecord = record
         finalRecord.sizeBytes = FileUtilities.directorySize(directory)
-        let finalManifest = BackupManifest(record: finalRecord, files: files, rolloutFirstLines: firstLines)
+        let finalManifest = BackupManifest(record: finalRecord, files: files, rolloutFirstLines: firstLines, rolloutMtimes: mtimes)
         try JSONEncoder.codexSynced.encode(finalManifest).write(to: directory.appendingPathComponent("manifest.json"))
         return finalRecord
     }

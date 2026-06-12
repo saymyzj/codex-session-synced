@@ -45,7 +45,7 @@ struct BackupsView: View {
                                 EmptyState(
                                     image: "externaldrive.badge.plus",
                                     title: viewModel.l10n.text("暂无备份", "No backups yet"),
-                                    message: viewModel.l10n.text("只有存在实际待修复项并执行“备份并修复”时，应用才会创建备份。轻简备份默认保留 5 份，全量备份默认保留 3 份。", "Backups are created only when repairs are applied. Lightweight keeps 5 by default; full keeps 3 by default."),
+                                    message: viewModel.l10n.text("只有存在实际待修复项并执行“备份并修复”时，应用才会创建备份。轻量备份默认保留 5 份，全量备份默认保留 3 份。", "Backups are created only when repairs are applied. Lightweight keeps 5 by default; full keeps 3 by default."),
                                     actionTitle: viewModel.l10n.text("查看待修复项", "View Pending"),
                                     actionImage: "list.bullet.rectangle"
                                 ) {

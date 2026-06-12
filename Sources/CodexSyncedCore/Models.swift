@@ -22,7 +22,7 @@ public enum BackupMode: String, CaseIterable, Identifiable, Codable {
 
     public var zhTitle: String {
         switch self {
-        case .lightweight: "轻简备份"
+        case .lightweight: "轻量备份"
         case .full: "全量备份"
         }
     }
@@ -128,20 +128,46 @@ public struct ThreadRow: Identifiable, Equatable, Codable {
     public var modelProvider: String
     public var hasUserEvent: Bool
     public var cwd: String
+    public var source: String
     public var threadSource: String?
     public var archived: Bool
     public var updatedAt: Int64
+    public var updatedAtMs: Int64?
+    public var firstUserMessage: String
+    public var preview: String
 
-    public init(id: String, rolloutPath: String, title: String, modelProvider: String, hasUserEvent: Bool, cwd: String, threadSource: String?, archived: Bool, updatedAt: Int64) {
+    public var effectiveUpdatedAtMs: Int64 {
+        if let updatedAtMs, updatedAtMs > 0 {
+            return updatedAtMs
+        }
+        return updatedAt * 1000
+    }
+
+    public init(id: String, rolloutPath: String, title: String, modelProvider: String, hasUserEvent: Bool, cwd: String, source: String, threadSource: String?, archived: Bool, updatedAt: Int64, updatedAtMs: Int64?, firstUserMessage: String, preview: String) {
         self.id = id
         self.rolloutPath = rolloutPath
         self.title = title
         self.modelProvider = modelProvider
         self.hasUserEvent = hasUserEvent
         self.cwd = cwd
+        self.source = source
         self.threadSource = threadSource
         self.archived = archived
         self.updatedAt = updatedAt
+        self.updatedAtMs = updatedAtMs
+        self.firstUserMessage = firstUserMessage
+        self.preview = preview
+    }
+}
+
+public struct ProviderRepair: Identifiable, Equatable, Codable {
+    public var id: String { thread.id }
+    public var thread: ThreadRow
+    public var targetProvider: String
+
+    public init(thread: ThreadRow, targetProvider: String) {
+        self.thread = thread
+        self.targetProvider = targetProvider
     }
 }
 
@@ -169,13 +195,68 @@ public struct IndexRepair: Identifiable, Equatable, Codable {
     public var id: String
     public var threadID: String
     public var title: String
-    public var updatedAt: Int64
+    public var updatedAtMs: Int64
 
-    public init(threadID: String, title: String, updatedAt: Int64) {
+    public init(threadID: String, title: String, updatedAtMs: Int64) {
         self.id = threadID
         self.threadID = threadID
         self.title = title
-        self.updatedAt = updatedAt
+        self.updatedAtMs = updatedAtMs
+    }
+}
+
+public struct TimestampRepair: Identifiable, Equatable, Codable {
+    public var id: String { threadID }
+    public var threadID: String
+    public var title: String
+    public var currentUpdatedAtMs: Int64
+    public var targetUpdatedAtMs: Int64
+
+    public init(threadID: String, title: String, currentUpdatedAtMs: Int64, targetUpdatedAtMs: Int64) {
+        self.threadID = threadID
+        self.title = title
+        self.currentUpdatedAtMs = currentUpdatedAtMs
+        self.targetUpdatedAtMs = targetUpdatedAtMs
+    }
+}
+
+public struct TitleRepair: Identifiable, Equatable, Codable {
+    public var id: String { threadID }
+    public var threadID: String
+    public var currentTitle: String
+    public var targetTitle: String
+
+    public init(threadID: String, currentTitle: String, targetTitle: String) {
+        self.threadID = threadID
+        self.currentTitle = currentTitle
+        self.targetTitle = targetTitle
+    }
+}
+
+public struct RolloutMtimeRepair: Identifiable, Equatable, Codable {
+    public var id: String { rolloutPath }
+    public var threadID: String
+    public var title: String
+    public var rolloutPath: String
+    public var currentMtimeMs: Int64
+    public var targetMtimeMs: Int64
+
+    public init(threadID: String, title: String, rolloutPath: String, currentMtimeMs: Int64, targetMtimeMs: Int64) {
+        self.threadID = threadID
+        self.title = title
+        self.rolloutPath = rolloutPath
+        self.currentMtimeMs = currentMtimeMs
+        self.targetMtimeMs = targetMtimeMs
+    }
+}
+
+public struct GlobalStateRepair: Equatable, Codable {
+    public var changes: [String]
+    public var repairedJSON: String
+
+    public init(changes: [String], repairedJSON: String) {
+        self.changes = changes
+        self.repairedJSON = repairedJSON
     }
 }
 
@@ -183,20 +264,31 @@ public struct ScanResult: Equatable {
     public var providerInfo: ProviderInfo
     public var stateDatabase: StateDatabase?
     public var threads: [ThreadRow]
-    public var sqliteProviderUpdates: [ThreadRow]
+    public var sqliteProviderUpdates: [ProviderRepair]
     public var sqliteCompatibilityUpdates: [ThreadRow]
     public var rolloutRepairs: [RolloutRepair]
     public var indexRepairs: [IndexRepair]
+    public var sqliteTimestampRepairs: [TimestampRepair]
+    public var sqliteTitleRepairs: [TitleRepair]
+    public var rolloutMtimeRepairs: [RolloutMtimeRepair]
+    public var globalStateRepair: GlobalStateRepair?
     public var backups: [BackupRecord]
     public var codexHome: URL
     public var sqliteHome: URL
     public var lastRepairAt: Date?
 
     public var hasRepairs: Bool {
-        !sqliteProviderUpdates.isEmpty || !sqliteCompatibilityUpdates.isEmpty || !rolloutRepairs.isEmpty || !indexRepairs.isEmpty
+        !sqliteProviderUpdates.isEmpty ||
+            !sqliteCompatibilityUpdates.isEmpty ||
+            !rolloutRepairs.isEmpty ||
+            !indexRepairs.isEmpty ||
+            !sqliteTimestampRepairs.isEmpty ||
+            !sqliteTitleRepairs.isEmpty ||
+            !rolloutMtimeRepairs.isEmpty ||
+            globalStateRepair != nil
     }
 
-    public init(providerInfo: ProviderInfo, stateDatabase: StateDatabase?, threads: [ThreadRow], sqliteProviderUpdates: [ThreadRow], sqliteCompatibilityUpdates: [ThreadRow], rolloutRepairs: [RolloutRepair], indexRepairs: [IndexRepair], backups: [BackupRecord], codexHome: URL, sqliteHome: URL, lastRepairAt: Date?) {
+    public init(providerInfo: ProviderInfo, stateDatabase: StateDatabase?, threads: [ThreadRow], sqliteProviderUpdates: [ProviderRepair], sqliteCompatibilityUpdates: [ThreadRow], rolloutRepairs: [RolloutRepair], indexRepairs: [IndexRepair], sqliteTimestampRepairs: [TimestampRepair], sqliteTitleRepairs: [TitleRepair], rolloutMtimeRepairs: [RolloutMtimeRepair], globalStateRepair: GlobalStateRepair?, backups: [BackupRecord], codexHome: URL, sqliteHome: URL, lastRepairAt: Date?) {
         self.providerInfo = providerInfo
         self.stateDatabase = stateDatabase
         self.threads = threads
@@ -204,6 +296,10 @@ public struct ScanResult: Equatable {
         self.sqliteCompatibilityUpdates = sqliteCompatibilityUpdates
         self.rolloutRepairs = rolloutRepairs
         self.indexRepairs = indexRepairs
+        self.sqliteTimestampRepairs = sqliteTimestampRepairs
+        self.sqliteTitleRepairs = sqliteTitleRepairs
+        self.rolloutMtimeRepairs = rolloutMtimeRepairs
+        self.globalStateRepair = globalStateRepair
         self.backups = backups
         self.codexHome = codexHome
         self.sqliteHome = sqliteHome

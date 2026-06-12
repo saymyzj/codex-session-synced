@@ -46,7 +46,7 @@ struct SettingsView: View {
                         }
                         rowDivider
 
-                        stepperRow(title: viewModel.l10n.text("轻简备份最大数量", "Lightweight Limit"), value: $viewModel.settings.lightweightLimit, range: 1...30)
+                        stepperRow(title: viewModel.l10n.text("轻量备份最大数量", "Lightweight Limit"), value: $viewModel.settings.lightweightLimit, range: 1...30)
                         rowDivider
                         stepperRow(title: viewModel.l10n.text("全量备份最大数量", "Full Limit"), value: $viewModel.settings.fullLimit, range: 1...12)
                         rowDivider

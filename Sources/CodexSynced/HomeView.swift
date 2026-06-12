@@ -10,7 +10,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HeaderView(
                     title: viewModel.l10n.text("会话历史修复", "Conversation History Repair"),
-                    subtitle: viewModel.l10n.text("根据当前 Codex Provider 动态对齐本地历史。", "Match local history to the active Codex provider.")
+                    subtitle: viewModel.l10n.text("修复 Codex Desktop 侧边栏标题、时间、索引和本地 UI 状态。", "Repair Codex Desktop sidebar titles, timestamps, index, and local UI state.")
                 )
 
                 statusPanel
@@ -86,24 +86,43 @@ struct HomeView: View {
         return Grid(horizontalSpacing: 14, verticalSpacing: 14) {
             GridRow {
                 MetricTile(
-                    title: viewModel.l10n.text("待修复 Provider", "Provider Updates"),
+                    title: viewModel.l10n.text("Provider", "Provider"),
                     value: "\(result?.sqliteProviderUpdates.count ?? 0)",
-                    caption: viewModel.l10n.text("SQLite 记录", "SQLite rows")
+                    caption: viewModel.l10n.text("按 rollout 回写 SQLite", "SQLite follows rollout")
                 )
                 MetricTile(
-                    title: viewModel.l10n.text("Rollout Metadata", "Rollout Metadata"),
-                    value: "\(result?.rolloutRepairs.count ?? 0)",
-                    caption: viewModel.l10n.text("只修改第一行", "First line only")
+                    title: viewModel.l10n.text("标题", "Titles"),
+                    value: "\(result?.sqliteTitleRepairs.count ?? 0)",
+                    caption: viewModel.l10n.text("避免新对话", "Avoid untitled rows")
                 )
                 MetricTile(
-                    title: viewModel.l10n.text("索引补齐", "Index Repairs"),
+                    title: viewModel.l10n.text("时间", "Timestamps"),
+                    value: "\((result?.sqliteTimestampRepairs.count ?? 0) + (result?.rolloutMtimeRepairs.count ?? 0))",
+                    caption: viewModel.l10n.text("SQLite + rollout mtime", "SQLite + rollout mtime")
+                )
+            }
+            GridRow {
+                MetricTile(
+                    title: viewModel.l10n.text("索引", "Index"),
                     value: "\(result?.indexRepairs.count ?? 0)",
                     caption: "session_index.jsonl"
+                )
+                MetricTile(
+                    title: viewModel.l10n.text("UI 状态", "UI State"),
+                    value: "\(result?.globalStateRepair?.changes.count ?? 0)",
+                    caption: ".codex-global-state.json"
+                )
+                MetricTile(
+                    title: viewModel.l10n.text("兼容字段", "Compatibility"),
+                    value: "\(result?.sqliteCompatibilityUpdates.count ?? 0)",
+                    caption: viewModel.l10n.text("保守禁用", "Conservative")
                 )
             }
         }
         .animation(AppMotion.smooth, value: result?.sqliteProviderUpdates.count ?? 0)
-        .animation(AppMotion.smooth, value: result?.rolloutRepairs.count ?? 0)
+        .animation(AppMotion.smooth, value: result?.sqliteTitleRepairs.count ?? 0)
+        .animation(AppMotion.smooth, value: result?.sqliteTimestampRepairs.count ?? 0)
+        .animation(AppMotion.smooth, value: result?.rolloutMtimeRepairs.count ?? 0)
         .animation(AppMotion.smooth, value: result?.indexRepairs.count ?? 0)
     }
 
@@ -187,7 +206,7 @@ struct HomeView: View {
         }
         return (viewModel.scanResult?.hasRepairs ?? false)
             ? viewModel.l10n.text("发现待修复项", "Repairs Found")
-            : viewModel.l10n.text("会话历史已对齐", "History Is Aligned")
+            : viewModel.l10n.text("侧边栏状态正常", "Sidebar Looks Healthy")
     }
 
     private var workflowSubtitle: String {
@@ -195,9 +214,9 @@ struct HomeView: View {
             return viewModel.l10n.text("正在检查本地历史，请稍候。", "Checking local history. Please wait.")
         }
         if viewModel.scanResult?.hasRepairs ?? false {
-            return viewModel.l10n.text("发现 \(viewModel.pendingRepairCount) 项待处理。下一步查看变更并选择备份模式。", "Found \(viewModel.pendingRepairCount) items. Review changes and select a backup mode.")
+            return viewModel.l10n.text("发现 \(viewModel.pendingRepairCount) 项侧边栏摘要问题。下一步查看变更并选择备份模式。", "Found \(viewModel.pendingRepairCount) sidebar summary issues. Review changes and select a backup mode.")
         }
-        return viewModel.l10n.text("当前没有待处理项。切换 Provider 后，重新扫描即可检查历史。", "No pending items. Scan again after switching providers.")
+        return viewModel.l10n.text("当前没有待处理项。重新扫描即可检查本地历史状态。", "No pending items. Scan again to check local history state.")
     }
 
     private var workflowActionTitle: String {
@@ -255,7 +274,7 @@ struct HomeView: View {
         switch viewModel.status {
         case .failed(let message): message
         default:
-            viewModel.l10n.text("已读取当前登录态和 Provider。不会修改 Token、API Key、第三方 URL 或会话正文。", "The active login and provider are detected. Tokens, keys, URLs, and message bodies are never changed.")
+            viewModel.l10n.text("已读取本地会话摘要。不会修改 Token、API Key、第三方 URL 或会话正文。", "Local conversation summaries are inspected. Tokens, keys, URLs, and message bodies are never changed.")
         }
     }
 
