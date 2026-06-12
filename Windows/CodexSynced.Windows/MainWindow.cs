@@ -20,6 +20,7 @@ using WpfControl = System.Windows.Controls.Control;
 using WpfCursors = System.Windows.Input.Cursors;
 using WpfFontFamily = System.Windows.Media.FontFamily;
 using WpfPoint = System.Windows.Point;
+using WpfProgressBar = System.Windows.Controls.ProgressBar;
 using WpfSize = System.Windows.Size;
 
 namespace CodexSynced.Windows;
@@ -686,7 +687,7 @@ internal sealed class MainWindow : Window
         s.Children.Add(TwoCol(
             Text(_busyTitle, 12, FontWeights.SemiBold, Ink),
             Text($"{Math.Round(_busyProgress * 100):0}%", 12, FontWeights.SemiBold, color, center: true)));
-        var bar = new ProgressBar
+        var bar = new WpfProgressBar
         {
             Minimum = 0,
             Maximum = 100,
