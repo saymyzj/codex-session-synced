@@ -641,7 +641,7 @@ internal sealed class RepairService
         }
 
         var saved = root["electron-saved-workspace-roots"] is JsonArray savedArray
-            ? savedArray.Select(value => value?.GetValue<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ? savedArray.Select(value => value?.GetValue<string>()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var order = root["project-order"] as JsonArray ?? new JsonArray();
         if (root["project-order"] is not JsonArray)
