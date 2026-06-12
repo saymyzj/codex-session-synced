@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Language: String, CaseIterable, Identifiable {
+public enum Language: String, CaseIterable, Identifiable, Sendable {
     case zh
     case en
 
@@ -14,7 +14,7 @@ public enum Language: String, CaseIterable, Identifiable {
     }
 }
 
-public enum BackupMode: String, CaseIterable, Identifiable, Codable {
+public enum BackupMode: String, CaseIterable, Identifiable, Codable, Sendable {
     case lightweight
     case full
 
@@ -35,7 +35,7 @@ public enum BackupMode: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-public enum ScanStatus: Equatable {
+public enum ScanStatus: Equatable, Sendable {
     case idle
     case scanning
     case ready
@@ -44,7 +44,7 @@ public enum ScanStatus: Equatable {
     case failed(String)
 }
 
-public struct AppSettings {
+public struct AppSettings: Sendable {
     public var language: Language
     public var codexHome: URL
     public var sqliteHome: URL?
@@ -52,8 +52,9 @@ public struct AppSettings {
     public var lightweightLimit: Int
     public var fullLimit: Int
     public var openCodexAfterRepair: Bool
+    public var alignProvidersForVisibility: Bool
 
-    public init(language: Language, codexHome: URL, sqliteHome: URL?, defaultBackupMode: BackupMode, lightweightLimit: Int, fullLimit: Int, openCodexAfterRepair: Bool) {
+    public init(language: Language, codexHome: URL, sqliteHome: URL?, defaultBackupMode: BackupMode, lightweightLimit: Int, fullLimit: Int, openCodexAfterRepair: Bool, alignProvidersForVisibility: Bool = true) {
         self.language = language
         self.codexHome = codexHome
         self.sqliteHome = sqliteHome
@@ -61,6 +62,7 @@ public struct AppSettings {
         self.lightweightLimit = lightweightLimit
         self.fullLimit = fullLimit
         self.openCodexAfterRepair = openCodexAfterRepair
+        self.alignProvidersForVisibility = alignProvidersForVisibility
     }
 
     public static func load() -> AppSettings {
@@ -82,7 +84,8 @@ public struct AppSettings {
             defaultBackupMode: backupMode,
             lightweightLimit: max(defaults.integer(forKey: "lightweightLimit"), 5),
             fullLimit: max(defaults.integer(forKey: "fullLimit"), 3),
-            openCodexAfterRepair: defaults.object(forKey: "openCodexAfterRepair") as? Bool ?? true
+            openCodexAfterRepair: defaults.object(forKey: "openCodexAfterRepair") as? Bool ?? true,
+            alignProvidersForVisibility: defaults.object(forKey: "alignProvidersForVisibility") as? Bool ?? true
         )
     }
 
@@ -95,10 +98,11 @@ public struct AppSettings {
         defaults.set(lightweightLimit, forKey: "lightweightLimit")
         defaults.set(fullLimit, forKey: "fullLimit")
         defaults.set(openCodexAfterRepair, forKey: "openCodexAfterRepair")
+        defaults.set(alignProvidersForVisibility, forKey: "alignProvidersForVisibility")
     }
 }
 
-public struct ProviderInfo: Equatable {
+public struct ProviderInfo: Equatable, Sendable {
     public var provider: String
     public var authLabel: String
     public var configURL: URL
@@ -110,7 +114,7 @@ public struct ProviderInfo: Equatable {
     }
 }
 
-public struct StateDatabase: Identifiable, Equatable {
+public struct StateDatabase: Identifiable, Equatable, Sendable {
     public var id: String { url.path }
     public var url: URL
     public var modifiedAt: Date
@@ -121,7 +125,7 @@ public struct StateDatabase: Identifiable, Equatable {
     }
 }
 
-public struct ThreadRow: Identifiable, Equatable, Codable {
+public struct ThreadRow: Identifiable, Equatable, Codable, Sendable {
     public var id: String
     public var rolloutPath: String
     public var title: String
@@ -160,7 +164,7 @@ public struct ThreadRow: Identifiable, Equatable, Codable {
     }
 }
 
-public struct ProviderRepair: Identifiable, Equatable, Codable {
+public struct ProviderRepair: Identifiable, Equatable, Codable, Sendable {
     public var id: String { thread.id }
     public var thread: ThreadRow
     public var targetProvider: String
@@ -171,7 +175,7 @@ public struct ProviderRepair: Identifiable, Equatable, Codable {
     }
 }
 
-public struct RolloutRepair: Identifiable, Equatable, Codable {
+public struct RolloutRepair: Identifiable, Equatable, Codable, Sendable {
     public var id: String
     public var url: URL
     public var sessionID: String
@@ -191,7 +195,7 @@ public struct RolloutRepair: Identifiable, Equatable, Codable {
     }
 }
 
-public struct IndexRepair: Identifiable, Equatable, Codable {
+public struct IndexRepair: Identifiable, Equatable, Codable, Sendable {
     public var id: String
     public var threadID: String
     public var title: String
@@ -205,7 +209,7 @@ public struct IndexRepair: Identifiable, Equatable, Codable {
     }
 }
 
-public struct TimestampRepair: Identifiable, Equatable, Codable {
+public struct TimestampRepair: Identifiable, Equatable, Codable, Sendable {
     public var id: String { threadID }
     public var threadID: String
     public var title: String
@@ -220,7 +224,7 @@ public struct TimestampRepair: Identifiable, Equatable, Codable {
     }
 }
 
-public struct TitleRepair: Identifiable, Equatable, Codable {
+public struct TitleRepair: Identifiable, Equatable, Codable, Sendable {
     public var id: String { threadID }
     public var threadID: String
     public var currentTitle: String
@@ -233,7 +237,7 @@ public struct TitleRepair: Identifiable, Equatable, Codable {
     }
 }
 
-public struct RolloutMtimeRepair: Identifiable, Equatable, Codable {
+public struct RolloutMtimeRepair: Identifiable, Equatable, Codable, Sendable {
     public var id: String { rolloutPath }
     public var threadID: String
     public var title: String
@@ -250,7 +254,7 @@ public struct RolloutMtimeRepair: Identifiable, Equatable, Codable {
     }
 }
 
-public struct GlobalStateRepair: Equatable, Codable {
+public struct GlobalStateRepair: Equatable, Codable, Sendable {
     public var changes: [String]
     public var repairedJSON: String
 
@@ -260,7 +264,7 @@ public struct GlobalStateRepair: Equatable, Codable {
     }
 }
 
-public struct ScanResult: Equatable {
+public struct ScanResult: Equatable, Sendable {
     public var providerInfo: ProviderInfo
     public var stateDatabase: StateDatabase?
     public var threads: [ThreadRow]
@@ -307,7 +311,7 @@ public struct ScanResult: Equatable {
     }
 }
 
-public struct RepairSummary: Codable, Equatable {
+public struct RepairSummary: Codable, Equatable, Sendable {
     public var targetProvider: String
     public var sqliteProviderUpdates: Int
     public var sqliteCompatibilityUpdates: Int
@@ -325,7 +329,7 @@ public struct RepairSummary: Codable, Equatable {
     }
 }
 
-public struct BackupRecord: Identifiable, Codable, Equatable {
+public struct BackupRecord: Identifiable, Codable, Equatable, Sendable {
     public var id: String { directoryName }
     public var directoryName: String
     public var createdAt: Date

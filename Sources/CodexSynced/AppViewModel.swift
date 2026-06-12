@@ -16,6 +16,12 @@ struct AppNotice: Identifiable {
     var isLoading: Bool
 }
 
+struct OperationProgress: Equatable {
+    var title: String
+    var detail: String
+    var fraction: Double?
+}
+
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var settings: AppSettings {
@@ -34,6 +40,7 @@ final class AppViewModel: ObservableObject {
     @Published var showingCodexRunningAlert = false
     @Published var notice: AppNotice?
     @Published var lastScanAt: Date?
+    @Published var progress: OperationProgress?
 
     let service = CodexRepairService()
     private var dismissNoticeTask: Task<Void, Never>?
@@ -48,6 +55,11 @@ final class AppViewModel: ObservableObject {
 
     func scan(showFeedback: Bool = true) async {
         status = .scanning
+        setProgress(
+            title: l10n.text("识别当前环境", "Detecting environment"),
+            detail: l10n.text("正在读取 config.toml、状态库和 Provider 设置。", "Reading config.toml, state database, and provider settings."),
+            fraction: 0.16
+        )
         if showFeedback {
             showNotice(
                 title: l10n.text("正在扫描", "Scanning"),
@@ -58,9 +70,25 @@ final class AppViewModel: ObservableObject {
             )
         }
         do {
-            scanResult = try service.scan(settings: settings)
+            let currentSettings = settings
+            await Task.yield()
+            setProgress(
+                title: l10n.text("扫描本地历史", "Scanning local history"),
+                detail: l10n.text("正在比对 SQLite、rollout 和 session_index。", "Comparing SQLite, rollout files, and session_index."),
+                fraction: 0.42
+            )
+            let result = try await Task.detached(priority: .userInitiated) {
+                try CodexRepairService().scan(settings: currentSettings)
+            }.value
+            setProgress(
+                title: l10n.text("整理修复预览", "Preparing repair preview"),
+                detail: l10n.text("正在生成备份和写入预览。", "Preparing backup and write preview."),
+                fraction: 0.86
+            )
+            scanResult = result
             status = .ready
             lastScanAt = Date()
+            progress = nil
             if showFeedback {
                 let count = pendingRepairCount
                 showNotice(
@@ -73,6 +101,7 @@ final class AppViewModel: ObservableObject {
             }
         } catch {
             status = .failed(error.localizedDescription)
+            progress = nil
             showNotice(
                 title: l10n.text("扫描失败", "Scan Failed"),
                 message: error.localizedDescription,
@@ -88,6 +117,11 @@ final class AppViewModel: ObservableObject {
         }
         do {
             status = .repairing(l10n.text("正在创建备份", "Creating backup"))
+            setProgress(
+                title: l10n.text("准备备份", "Preparing backup"),
+                detail: l10n.text("正在确认 Codex 已退出并准备回滚数据。", "Checking that Codex is closed and preparing rollback data."),
+                fraction: 0.12
+            )
             showNotice(
                 title: l10n.text("正在备份并修复", "Backing Up and Repairing"),
                 message: l10n.text("请稍候，完成前不要退出应用。", "Please wait and keep this app open."),
@@ -95,10 +129,28 @@ final class AppViewModel: ObservableObject {
                 isLoading: true,
                 autoDismiss: false
             )
-            _ = try service.repair(scan: scanResult, settings: settings, mode: selectedBackupMode)
+            let currentSettings = settings
+            let mode = selectedBackupMode
+            await Task.yield()
+            setProgress(
+                title: l10n.text("写入修复项", "Writing repairs"),
+                detail: l10n.text("正在创建备份并写入 SQLite、rollout 和索引。", "Creating backup and writing SQLite, rollout, and index changes."),
+                fraction: 0.48
+            )
+            _ = try await Task.detached(priority: .userInitiated) {
+                try CodexRepairService().repair(scan: scanResult, settings: currentSettings, mode: mode)
+            }.value
             status = .success(l10n.text("修复完成", "Repair complete"))
-            self.scanResult = try service.scan(settings: settings)
+            setProgress(
+                title: l10n.text("复核结果", "Verifying result"),
+                detail: l10n.text("正在重新扫描确认修复收敛。", "Scanning again to verify the repair converged."),
+                fraction: 0.82
+            )
+            self.scanResult = try await Task.detached(priority: .userInitiated) {
+                try CodexRepairService().scan(settings: currentSettings)
+            }.value
             lastScanAt = Date()
+            progress = nil
             showNotice(
                 title: l10n.text("修复完成", "Repair Complete"),
                 message: l10n.text("侧边栏会话摘要已修复，并已创建备份。", "Sidebar conversation summaries were repaired and backed up."),
@@ -110,9 +162,11 @@ final class AppViewModel: ObservableObject {
         } catch CodexRepairError.codexIsRunning {
             showingCodexRunningAlert = true
             status = .failed(CodexRepairError.codexIsRunning.localizedDescription)
+            progress = nil
             showNotice(title: l10n.text("需要先退出 Codex", "Quit Codex First"), message: CodexRepairError.codexIsRunning.localizedDescription, tone: .warning)
         } catch {
             status = .failed(error.localizedDescription)
+            progress = nil
             showNotice(title: l10n.text("修复失败", "Repair Failed"), message: error.localizedDescription, tone: .warning)
         }
     }
@@ -120,6 +174,11 @@ final class AppViewModel: ObservableObject {
     func restore(_ backup: BackupRecord) async {
         do {
             status = .repairing(l10n.text("正在恢复备份", "Restoring backup"))
+            setProgress(
+                title: l10n.text("恢复备份", "Restoring backup"),
+                detail: l10n.text("正在还原 SQLite、session_index 和 rollout metadata。", "Restoring SQLite, session_index, and rollout metadata."),
+                fraction: 0.32
+            )
             showNotice(
                 title: l10n.text("正在恢复备份", "Restoring Backup"),
                 message: l10n.text("正在恢复状态文件和 rollout metadata。", "Restoring state files and rollout metadata."),
@@ -127,17 +186,30 @@ final class AppViewModel: ObservableObject {
                 isLoading: true,
                 autoDismiss: false
             )
-            try service.restore(backup: backup)
+            let currentSettings = settings
+            try await Task.detached(priority: .userInitiated) {
+                try CodexRepairService().restore(backup: backup)
+            }.value
             status = .success(l10n.text("备份已恢复", "Backup restored"))
-            scanResult = try service.scan(settings: settings)
+            setProgress(
+                title: l10n.text("复核结果", "Verifying result"),
+                detail: l10n.text("正在重新扫描恢复后的状态。", "Scanning the restored state."),
+                fraction: 0.82
+            )
+            scanResult = try await Task.detached(priority: .userInitiated) {
+                try CodexRepairService().scan(settings: currentSettings)
+            }.value
             lastScanAt = Date()
+            progress = nil
             showNotice(title: l10n.text("恢复完成", "Restore Complete"), message: l10n.text("备份已经恢复，可以重新打开 Codex。", "The backup is restored. You can reopen Codex."), tone: .success)
         } catch CodexRepairError.codexIsRunning {
             showingCodexRunningAlert = true
             status = .failed(CodexRepairError.codexIsRunning.localizedDescription)
+            progress = nil
             showNotice(title: l10n.text("需要先退出 Codex", "Quit Codex First"), message: CodexRepairError.codexIsRunning.localizedDescription, tone: .warning)
         } catch {
             status = .failed(error.localizedDescription)
+            progress = nil
             showNotice(title: l10n.text("恢复失败", "Restore Failed"), message: error.localizedDescription, tone: .warning)
         }
         showingRestoreConfirmation = false
@@ -179,6 +251,10 @@ final class AppViewModel: ObservableObject {
     func dismissNotice() {
         dismissNoticeTask?.cancel()
         notice = nil
+    }
+
+    private func setProgress(title: String, detail: String, fraction: Double?) {
+        progress = OperationProgress(title: title, detail: detail, fraction: fraction)
     }
 
     private func showNotice(

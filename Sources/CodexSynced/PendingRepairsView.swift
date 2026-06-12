@@ -25,7 +25,8 @@ struct PendingRepairsView: View {
         SoftPanel {
             VStack(spacing: 0) {
                 row(viewModel.l10n.text("目标 Provider", "Target Provider"), viewModel.scanResult?.providerInfo.provider ?? "-")
-                row(viewModel.l10n.text("按 rollout 修正 Provider 的 SQLite 记录", "SQLite provider rows matched to rollout"), "\(viewModel.scanResult?.sqliteProviderUpdates.count ?? 0)")
+                row(providerSummaryTitle, "\(viewModel.scanResult?.sqliteProviderUpdates.count ?? 0)")
+                row(viewModel.l10n.text("待对齐 rollout Provider", "Rollout providers to align"), "\(viewModel.scanResult?.rolloutRepairs.count ?? 0)")
                 row(viewModel.l10n.text("待写入短标题", "Sidebar title rows"), "\(viewModel.scanResult?.sqliteTitleRepairs.count ?? 0)")
                 row(viewModel.l10n.text("待修复更新时间", "Timestamp rows"), "\((viewModel.scanResult?.sqliteTimestampRepairs.count ?? 0) + (viewModel.scanResult?.rolloutMtimeRepairs.count ?? 0))")
                 row(viewModel.l10n.text("待重建索引条目", "Index entries to rebuild"), "\(viewModel.scanResult?.indexRepairs.count ?? 0)")
@@ -36,27 +37,32 @@ struct PendingRepairsView: View {
 
     private var backupChoice: some View {
         SoftPanel {
-            HStack(spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(viewModel.l10n.text("备份模式", "Backup Mode"))
-                        .font(.system(size: 16, weight: .semibold))
-                    Text(viewModel.l10n.text("轻量备份只保存必要回滚数据；全量备份会额外保存 sessions。", "Lightweight stores rollback data; full also copies sessions."))
-                        .font(.system(size: 13))
-                        .foregroundStyle(DS.muted)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(viewModel.l10n.text("备份模式", "Backup Mode"))
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(viewModel.l10n.text("轻量备份只保存必要回滚数据；全量备份会额外保存 sessions。", "Lightweight stores rollback data; full also copies sessions."))
+                            .font(.system(size: 13))
+                            .foregroundStyle(DS.muted)
+                    }
+                    Spacer()
+                    BackupModeSwitch(selection: $viewModel.selectedBackupMode, language: viewModel.settings.language)
+                    .frame(width: 240)
+                    PrimaryButton(
+                        title: viewModel.l10n.text("备份并修复", "Back Up and Repair"),
+                        systemImage: "checkmark.seal",
+                        disabled: !(viewModel.scanResult?.hasRepairs ?? false) || viewModel.isBusy,
+                        isLoading: viewModel.isBusy
+                    ) {
+                        showRepairPulse.toggle()
+                        Task { await viewModel.repairNow() }
+                    }
+                    .symbolEffect(.bounce, value: showRepairPulse)
                 }
-                Spacer()
-                BackupModeSwitch(selection: $viewModel.selectedBackupMode, language: viewModel.settings.language)
-                .frame(width: 240)
-                PrimaryButton(
-                    title: viewModel.l10n.text("备份并修复", "Back Up and Repair"),
-                    systemImage: "checkmark.seal",
-                    disabled: !(viewModel.scanResult?.hasRepairs ?? false) || viewModel.isBusy,
-                    isLoading: viewModel.isBusy
-                ) {
-                    showRepairPulse.toggle()
-                    Task { await viewModel.repairNow() }
+                if let progress = viewModel.progress {
+                    OperationProgressView(progress: progress, tint: DS.blue)
                 }
-                .symbolEffect(.bounce, value: showRepairPulse)
             }
         }
         .modifier(HoverLift(y: 1.5))
@@ -162,9 +168,18 @@ struct PendingRepairsView: View {
             PreviewItem(
                 id: "provider-\($0.thread.id)",
                 icon: "cylinder.split.1x2",
-                kind: "Provider",
+                kind: viewModel.settings.alignProvidersForVisibility ? viewModel.l10n.text("Provider 对齐", "Provider Align") : "Provider",
                 title: displayTitle($0.thread.title, fallback: $0.thread.id),
                 detail: "\($0.thread.modelProvider) -> \($0.targetProvider)"
+            )
+        }
+        items += result.rolloutRepairs.map {
+            PreviewItem(
+                id: "rollout-\($0.url.path)",
+                icon: "doc.text.magnifyingglass",
+                kind: viewModel.l10n.text("rollout Provider", "Rollout Provider"),
+                title: displayTitle($0.sessionID, fallback: $0.url.lastPathComponent),
+                detail: "\($0.currentProvider ?? "nil") -> \($0.targetProvider)"
             )
         }
         items += result.sqliteTitleRepairs.map {
@@ -213,6 +228,12 @@ struct PendingRepairsView: View {
             )
         }
         return items
+    }
+
+    private var providerSummaryTitle: String {
+        viewModel.settings.alignProvidersForVisibility
+            ? viewModel.l10n.text("对齐到当前 Provider 的 SQLite 记录", "SQLite rows aligned to active provider")
+            : viewModel.l10n.text("按 rollout 修正 Provider 的 SQLite 记录", "SQLite provider rows matched to rollout")
     }
 
     private func displayTitle(_ value: String, fallback: String) -> String {

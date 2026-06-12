@@ -107,6 +107,37 @@ struct CodexSyncedCoreTests {
         #expect(repairs.first?.targetProvider == "openai")
     }
 
+    @Test func providerAlignmentTargetsActiveProviderForSQLiteAndRollout() throws {
+        let directory = try makeTempDirectory()
+        let rollout = directory.appendingPathComponent("rollout-provider-align.jsonl")
+        try """
+        {"timestamp":"2026-06-01T10:00:00.000Z","type":"session_meta","payload":{"id":"provider-align","model_provider":"openai","cwd":"\(directory.path)"}}
+        {"timestamp":"2026-06-01T10:01:00.000Z","type":"user_message","payload":{"text":"keep me"}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let thread = makeThread(
+            id: "provider-align",
+            rollout: rollout,
+            title: "Provider align",
+            provider: "openai",
+            cwd: directory.path,
+            firstUserMessage: "Provider align"
+        )
+        let sqliteRepairs = SidebarRepairPlanner.providerAlignmentRepairs(threads: [thread], targetProvider: "custom")
+        let rolloutRepairs = SidebarRepairPlanner.rolloutProviderAlignmentRepairs(threads: [thread], targetProvider: "custom")
+
+        #expect(sqliteRepairs.count == 1)
+        #expect(sqliteRepairs.first?.targetProvider == "custom")
+        #expect(rolloutRepairs.count == 1)
+        #expect(rolloutRepairs.first?.currentProvider == "openai")
+        #expect(rolloutRepairs.first?.targetProvider == "custom")
+
+        try RolloutRepairer.apply(rolloutRepairs[0])
+        let content = try String(contentsOf: rollout, encoding: .utf8)
+        #expect(content.contains("\"model_provider\":\"custom\""))
+        #expect(content.contains("\"text\":\"keep me\""))
+    }
+
     @Test func sidebarPlannerDetectsDesktopSummaryRepairs() throws {
         let directory = try makeTempDirectory()
         let project = directory.appendingPathComponent("Project")

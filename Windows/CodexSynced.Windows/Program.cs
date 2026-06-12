@@ -67,6 +67,7 @@ internal sealed class AppSettings
     public int LightweightLimit { get; set; } = 5;
     public int FullLimit { get; set; } = 3;
     public bool OpenCodexAfterRepair { get; set; } = true;
+    public bool AlignProvidersForVisibility { get; set; } = true;
 
     public static string SettingsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Codex Synced", "settings.json");
@@ -177,6 +178,7 @@ internal sealed class ScanResult
     public required List<BackupRecord> Backups { get; init; }
     public required string CodexHome { get; init; }
     public required string SqliteHome { get; init; }
+    public bool AlignProvidersForVisibility { get; init; }
 
     public bool HasRepairs =>
         SqliteProviderUpdates.Count > 0 ||
@@ -202,6 +204,7 @@ internal sealed class ScanResult
     {
         provider = ProviderInfo.Provider,
         auth = ProviderInfo.AuthLabel,
+        alignProvidersForVisibility = AlignProvidersForVisibility,
         codexHome = CodexHome,
         sqliteHome = SqliteHome,
         stateDatabase = StateDatabase?.Path,
@@ -312,6 +315,12 @@ internal sealed class RepairService
             threads = db.QueryThreads();
         }
         var rolloutInfo = RolloutInfoByPath(threads);
+        var sqliteProviderUpdates = settings.AlignProvidersForVisibility
+            ? ProviderAlignmentRepairs(threads, provider)
+            : ProviderRepairs(threads, rolloutInfo);
+        var rolloutRepairs = settings.AlignProvidersForVisibility
+            ? RolloutProviderAlignmentRepairs(threads, provider)
+            : new List<RolloutRepair>();
         var titleRepairs = TitleRepairs(threads);
         var timestampRepairs = TimestampRepairs(threads, rolloutInfo);
         var projectedThreads = ProjectedThreads(threads, titleRepairs, timestampRepairs);
@@ -321,9 +330,9 @@ internal sealed class RepairService
             ProviderInfo = new(provider, authLabel, configPath),
             StateDatabase = state,
             Threads = threads,
-            SqliteProviderUpdates = ProviderRepairs(threads, rolloutInfo),
+            SqliteProviderUpdates = sqliteProviderUpdates,
             SqliteCompatibilityUpdates = [],
-            RolloutRepairs = [],
+            RolloutRepairs = rolloutRepairs,
             IndexRepairs = IndexRepairs(codexHome, projectedThreads),
             SqliteTimestampRepairs = timestampRepairs,
             SqliteTitleRepairs = titleRepairs,
@@ -331,7 +340,8 @@ internal sealed class RepairService
             GlobalStateRepair = GlobalStateRepair(codexHome, projectedThreads),
             Backups = LoadBackups(codexHome),
             CodexHome = codexHome,
-            SqliteHome = sqliteHome
+            SqliteHome = sqliteHome,
+            AlignProvidersForVisibility = settings.AlignProvidersForVisibility
         };
     }
 
@@ -448,6 +458,34 @@ internal sealed class RepairService
         File.Move(temp, path, true);
     }
 
+    private static RolloutRepair? MakeRolloutRepair(string path, string targetProvider)
+    {
+        if (!File.Exists(path))
+            return null;
+        using var reader = new StreamReader(path, Encoding.UTF8, true);
+        var firstLine = reader.ReadLine();
+        if (string.IsNullOrWhiteSpace(firstLine))
+            return null;
+        JsonObject root;
+        try
+        {
+            root = JsonNode.Parse(firstLine)?.AsObject() ?? new JsonObject();
+        }
+        catch
+        {
+            return null;
+        }
+        if (root["type"]?.GetValue<string>() != "session_meta" || root["payload"] is not JsonObject payload)
+            return null;
+        var current = payload["model_provider"]?.GetValue<string>();
+        if (current == targetProvider)
+            return null;
+        payload["model_provider"] = targetProvider;
+        var repairedFirstLine = root.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+        var sessionId = payload["id"]?.GetValue<string>() ?? Path.GetFileNameWithoutExtension(path);
+        return new(path, sessionId, current, targetProvider, firstLine, repairedFirstLine);
+    }
+
     private sealed record RolloutInfo(string? Provider, long? LastTimestampMs);
 
     private static Dictionary<string, RolloutInfo> RolloutInfoByPath(List<ThreadRow> threads)
@@ -490,6 +528,27 @@ internal sealed class RepairService
             .Where(row => rollouts.TryGetValue(row.RolloutPath, out var info) && !string.IsNullOrWhiteSpace(info.Provider) && info.Provider != row.ModelProvider)
             .Select(row => new ProviderRepair(row, rollouts[row.RolloutPath].Provider!))
             .ToList();
+
+    private static List<ProviderRepair> ProviderAlignmentRepairs(List<ThreadRow> threads, string targetProvider) =>
+        string.IsNullOrWhiteSpace(targetProvider)
+            ? []
+            : VisibleResumeThreads(threads)
+                .Where(row => row.ModelProvider != targetProvider)
+                .Select(row => new ProviderRepair(row, targetProvider))
+                .ToList();
+
+    private static List<RolloutRepair> RolloutProviderAlignmentRepairs(List<ThreadRow> threads, string targetProvider)
+    {
+        if (string.IsNullOrWhiteSpace(targetProvider))
+            return [];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return VisibleResumeThreads(threads)
+            .Where(row => seen.Add(row.RolloutPath))
+            .Select(row => MakeRolloutRepair(row.RolloutPath, targetProvider))
+            .Where(repair => repair is not null)
+            .Select(repair => repair!)
+            .ToList();
+    }
 
     private static List<TimestampRepair> TimestampRepairs(List<ThreadRow> threads, Dictionary<string, RolloutInfo> rollouts) =>
         threads
@@ -543,11 +602,15 @@ internal sealed class RepairService
     }
 
     private static List<IndexRepair> ResumeInventory(List<ThreadRow> threads) =>
+        VisibleResumeThreads(threads)
+            .Select(row => new IndexRepair(row.Id, row.Title, row.EffectiveUpdatedAtMs))
+            .ToList();
+
+    private static List<ThreadRow> VisibleResumeThreads(List<ThreadRow> threads) =>
         threads
             .Where(row => !row.Archived && ResumeSourceKind(row.Source) is not null && RolloutExists(row.RolloutPath))
             .OrderBy(row => row.EffectiveUpdatedAtMs)
             .ThenBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(row => new IndexRepair(row.Id, row.Title, row.EffectiveUpdatedAtMs))
             .ToList();
 
     private static List<IndexRepair> LoadIndexEntries(string indexPath)
@@ -662,7 +725,7 @@ internal sealed class RepairService
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var roots = new List<string>();
-        foreach (var row in threads.Where(row => !row.Archived && ResumeSourceKind(row.Source) is not null && RolloutExists(row.RolloutPath)).OrderBy(row => row.EffectiveUpdatedAtMs).ThenBy(row => row.Id, StringComparer.OrdinalIgnoreCase))
+        foreach (var row in VisibleResumeThreads(threads))
         {
             if (!string.IsNullOrWhiteSpace(row.Cwd) && seen.Add(row.Cwd))
                 roots.Add(row.Cwd);
@@ -1138,6 +1201,8 @@ internal sealed class MainForm : Form
     private readonly Label _detail = LabelWithFont(10);
     private readonly Label _provider = LabelWithFont(10, FontStyle.Bold);
     private readonly Label _database = LabelWithFont(9);
+    private readonly ProgressBar _progressBar = new() { Visible = false, Minimum = 0, Maximum = 100, Style = ProgressBarStyle.Continuous };
+    private readonly Label _progressDetail = LabelWithFont(9);
     private readonly Label[] _metrics = [LabelWithFont(24, FontStyle.Bold), LabelWithFont(24, FontStyle.Bold), LabelWithFont(24, FontStyle.Bold), LabelWithFont(24, FontStyle.Bold)];
     private readonly DataGridView _pendingGrid = CreateGrid();
     private readonly DataGridView _backupGrid = CreateGrid();
@@ -1148,6 +1213,7 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown _lightweightLimit = new() { Minimum = 1, Maximum = 30, Width = 72 };
     private readonly NumericUpDown _fullLimit = new() { Minimum = 1, Maximum = 12, Width = 72 };
     private readonly CheckBox _openAfterRepair = new() { Text = "修复完成后自动打开 Codex", AutoSize = true };
+    private readonly CheckBox _alignProviders = new() { Text = "跨 Provider 显示历史", AutoSize = true };
     private readonly TabControl _pages = new() { Dock = DockStyle.Fill, Appearance = TabAppearance.FlatButtons, ItemSize = new Size(0, 1), SizeMode = TabSizeMode.Fixed };
 
     public MainForm()
@@ -1175,6 +1241,7 @@ internal sealed class MainForm : Form
         _lightweightLimit.Value = _settings.LightweightLimit;
         _fullLimit.Value = _settings.FullLimit;
         _openAfterRepair.Checked = _settings.OpenCodexAfterRepair;
+        _alignProviders.Checked = _settings.AlignProvidersForVisibility;
         _lightweight.Checked = _settings.DefaultBackupMode == BackupMode.Lightweight;
         _full.Checked = _settings.DefaultBackupMode == BackupMode.Full;
         Shown += async (_, _) => await ScanAsync();
@@ -1226,7 +1293,7 @@ internal sealed class MainForm : Form
     {
         var page = Page("会话历史修复", "修复 Codex Desktop 侧边栏标题、时间、索引和本地 UI 状态。");
         var body = (FlowLayoutPanel)page.Controls[0];
-        var statusCard = Card(860, 142);
+        var statusCard = Card(860, 172);
         _status.Text = "正在识别当前环境";
         _status.Location = new Point(22, 18);
         _status.AutoSize = true;
@@ -1238,7 +1305,12 @@ internal sealed class MainForm : Form
         _provider.AutoSize = true;
         _database.Location = new Point(320, 96);
         _database.AutoSize = true;
-        statusCard.Controls.AddRange([_status, _detail, _provider, _database]);
+        _progressBar.Location = new Point(24, 126);
+        _progressBar.Size = new Size(360, 8);
+        _progressDetail.Location = new Point(400, 120);
+        _progressDetail.Size = new Size(430, 24);
+        _progressDetail.ForeColor = Color.DimGray;
+        statusCard.Controls.AddRange([_status, _detail, _provider, _database, _progressBar, _progressDetail]);
         body.Controls.Add(statusCard);
 
         var metricRow = new FlowLayoutPanel { Width = 880, Height = 118, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
@@ -1302,8 +1374,8 @@ internal sealed class MainForm : Form
     {
         var page = Page("设置", "Windows 版默认读取 %USERPROFILE%\\.codex。");
         var body = (FlowLayoutPanel)page.Controls[0];
-        var card = Card(860, 302);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 6 };
+        var card = Card(860, 342);
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 7 };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 94));
@@ -1315,7 +1387,9 @@ internal sealed class MainForm : Form
         layout.Controls.Add(_fullLimit, 1, 3);
         layout.Controls.Add(_openAfterRepair, 0, 4);
         layout.SetColumnSpan(_openAfterRepair, 2);
-        layout.Controls.Add(ActionButton("保存设置", 0, 0, SaveSettings), 0, 5);
+        layout.Controls.Add(_alignProviders, 0, 5);
+        layout.SetColumnSpan(_alignProviders, 2);
+        layout.Controls.Add(ActionButton("保存设置", 0, 0, SaveSettings), 0, 6);
         card.Controls.Add(layout);
         body.Controls.Add(card);
         return page;
@@ -1395,27 +1469,30 @@ internal sealed class MainForm : Form
 
     private async Task ScanAsync()
     {
-        SetBusy("正在扫描本地历史...");
+        SetBusy("正在识别当前环境...", "读取 config.toml、状态库和 Provider 设置。", 16);
         await Task.Yield();
         try
         {
             ApplySettings();
+            SetBusy("正在扫描本地历史...", "比对 SQLite、rollout 和 session_index。", 42);
             _scan = _service.Scan(_settings);
             _status.Text = _scan.HasRepairs ? $"发现 {_scan.PendingCount} 项待处理" : "侧边栏状态正常";
             _detail.Text = _scan.HasRepairs ? "请查看待修复项，确认变更后执行备份并修复。" : "当前没有待处理项。重新扫描即可检查本地历史。";
             _provider.Text = $"Provider: {_scan.ProviderInfo.Provider}  ·  {_scan.ProviderInfo.AuthLabel}";
             _database.Text = $"状态库: {_scan.StateDatabase?.Path ?? "未找到"}";
-            _metrics[0].Text = _scan.SqliteProviderUpdates.Count.ToString();
+            _metrics[0].Text = (_scan.SqliteProviderUpdates.Count + _scan.RolloutRepairs.Count).ToString();
             _metrics[1].Text = _scan.SqliteTitleRepairs.Count.ToString();
             _metrics[2].Text = _scan.IndexRepairs.Count.ToString();
             _metrics[3].Text = (_scan.SqliteTimestampRepairs.Count + _scan.RolloutMtimeRepairs.Count + (_scan.GlobalStateRepair?.Changes.Count ?? 0)).ToString();
             _pendingGrid.DataSource = PreviewRows(_scan).ToList();
             _backupGrid.DataSource = _scan.Backups.Select(backup => new { 时间 = backup.CreatedAt.ToLocalTime(), 模式 = backup.Mode, Provider = backup.TargetProvider, 大小KB = backup.SizeBytes / 1024, 路径 = backup.Path }).ToList();
+            ClearBusy();
         }
         catch (Exception ex)
         {
             _status.Text = "扫描失败";
             _detail.Text = ex.Message;
+            ClearBusy();
             MessageBox.Show(ex.Message, "扫描失败", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
@@ -1429,18 +1506,20 @@ internal sealed class MainForm : Form
         }
         if (MessageBox.Show($"即将创建备份并修复 {_scan.PendingCount} 项。继续吗？", "确认修复", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
             return;
-        SetBusy("正在备份并修复...");
+        SetBusy("正在备份并修复...", "创建备份并写入 SQLite、rollout 和索引。", 48);
         await Task.Yield();
         try
         {
             _service.Repair(_scan, _settings, _full.Checked ? BackupMode.Full : BackupMode.Lightweight);
             MessageBox.Show("修复完成。侧边栏会话摘要已经修复。", "Codex Synced", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            SetBusy("正在复核结果...", "重新扫描确认修复收敛。", 82);
             await ScanAsync();
             if (_settings.OpenCodexAfterRepair)
                 RepairService.OpenCodex();
         }
         catch (Exception ex)
         {
+            ClearBusy();
             MessageBox.Show(ex.Message, "修复失败", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
@@ -1458,29 +1537,45 @@ internal sealed class MainForm : Form
         var backup = _scan.Backups[index];
         if (MessageBox.Show($"将恢复备份 {backup.DirectoryName}。请确认 Codex 已退出。", "确认恢复", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
             return;
+        SetBusy("正在恢复备份...", "还原 SQLite、session_index 和 rollout metadata。", 32);
+        await Task.Yield();
         try
         {
             _service.Restore(backup);
             MessageBox.Show("备份恢复完成。", "Codex Synced", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            SetBusy("正在复核结果...", "重新扫描恢复后的状态。", 82);
             await ScanAsync();
         }
         catch (Exception ex)
         {
+            ClearBusy();
             MessageBox.Show(ex.Message, "恢复失败", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
-    private void SetBusy(string message)
+    private void SetBusy(string message, string detail, int percent)
     {
         _status.Text = message;
-        _detail.Text = "请稍候。";
+        _detail.Text = detail;
+        _progressBar.Visible = true;
+        _progressBar.Value = Math.Clamp(percent, _progressBar.Minimum, _progressBar.Maximum);
+        _progressDetail.Text = $"{percent}% · {detail}";
+        Refresh();
+    }
+
+    private void ClearBusy()
+    {
+        _progressBar.Visible = false;
+        _progressDetail.Text = "";
         Refresh();
     }
 
     private static IEnumerable<object> PreviewRows(ScanResult scan)
     {
         foreach (var repair in scan.SqliteProviderUpdates)
-            yield return new { 类型 = "Provider", 标题 = TitleOrId(repair.Thread.Title, repair.Thread.Id), 详情 = $"{repair.Thread.ModelProvider} -> {repair.TargetProvider}" };
+            yield return new { 类型 = "Provider 对齐", 标题 = TitleOrId(repair.Thread.Title, repair.Thread.Id), 详情 = $"{repair.Thread.ModelProvider} -> {repair.TargetProvider}" };
+        foreach (var repair in scan.RolloutRepairs)
+            yield return new { 类型 = "rollout Provider", 标题 = TitleOrId(repair.SessionId, Path.GetFileName(repair.Path)), 详情 = $"{repair.CurrentProvider ?? "nil"} -> {repair.TargetProvider}" };
         foreach (var repair in scan.SqliteTitleRepairs)
             yield return new { 类型 = "标题", 标题 = TitleOrId(repair.TargetTitle, repair.ThreadId), 详情 = TitleOrId(repair.CurrentTitle, "空标题") };
         foreach (var repair in scan.SqliteTimestampRepairs)
@@ -1503,6 +1598,7 @@ internal sealed class MainForm : Form
         _settings.LightweightLimit = (int)_lightweightLimit.Value;
         _settings.FullLimit = (int)_fullLimit.Value;
         _settings.OpenCodexAfterRepair = _openAfterRepair.Checked;
+        _settings.AlignProvidersForVisibility = _alignProviders.Checked;
         _settings.DefaultBackupMode = _full.Checked ? BackupMode.Full : BackupMode.Lightweight;
     }
 
@@ -1586,7 +1682,7 @@ internal static class SelfTest
                     )
                     """);
             }
-            var settings = new AppSettings { CodexHome = root, OpenCodexAfterRepair = false };
+            var settings = new AppSettings { CodexHome = root, OpenCodexAfterRepair = false, AlignProvidersForVisibility = false };
             var service = new RepairService();
             var scan = service.Scan(settings);
             Assert(scan.SqliteProviderUpdates.Count == 1, "SQLite provider repair was not detected.");
@@ -1603,6 +1699,14 @@ internal static class SelfTest
             service.Restore(backup!, true);
             var restored = service.Scan(settings);
             Assert(restored.SqliteProviderUpdates.Count == 1, "Restore did not return SQLite provider metadata.");
+            settings.AlignProvidersForVisibility = true;
+            var aligned = service.Scan(settings);
+            Assert(aligned.SqliteProviderUpdates.Count == 0, "Provider alignment should not rewrite rows already on the active provider.");
+            Assert(aligned.RolloutRepairs.Count == 1, "Provider alignment rollout repair was not detected.");
+            var alignedBackup = service.Repair(aligned, settings, BackupMode.Lightweight, true);
+            Assert(alignedBackup is not null, "Provider alignment backup was not created.");
+            Assert(File.ReadAllText(rollout).Contains("\"model_provider\":\"custom\""), "Rollout provider was not aligned to custom.");
+            Assert(File.ReadAllText(rollout).Contains("\"message\":\"keep me\""), "Rollout body changed unexpectedly during provider alignment.");
             Console.WriteLine("Codex Synced Windows self-test passed.");
             return 0;
         }

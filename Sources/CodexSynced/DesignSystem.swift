@@ -399,6 +399,37 @@ struct ActivityStrip: View {
     }
 }
 
+struct OperationProgressView: View {
+    var progress: OperationProgress
+    var tint: Color = DS.blue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(progress.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DS.ink)
+                Spacer()
+                if let fraction = progress.fraction {
+                    Text("\(Int((fraction * 100).rounded()))%")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(tint)
+                }
+            }
+            ProgressView(value: progress.fraction ?? 0)
+                .tint(tint)
+                .controlSize(.small)
+            Text(progress.detail)
+                .font(.system(size: 12))
+                .foregroundStyle(DS.muted)
+                .lineLimit(2)
+        }
+        .padding(12)
+        .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(tint.opacity(0.14)))
+    }
+}
+
 struct MetricTile: View {
     var title: String
     var value: String

@@ -51,6 +51,28 @@ struct SettingsView: View {
                         stepperRow(title: viewModel.l10n.text("全量备份最大数量", "Full Limit"), value: $viewModel.settings.fullLimit, range: 1...12)
                         rowDivider
 
+                        HStack(alignment: .center, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(viewModel.l10n.text("跨 Provider 显示历史", "Cross-provider history visibility"))
+                                    .foregroundStyle(DS.ink)
+                                Text(viewModel.l10n.text("切到 custom/openai_http 后，将可恢复本地会话对齐到当前 Provider。", "When switching to custom/openai_http, align recoverable local threads to the active provider."))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(DS.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            AnimatedToggle(isOn: Binding(
+                                get: { viewModel.settings.alignProvidersForVisibility },
+                                set: { value in
+                                    viewModel.settings.alignProvidersForVisibility = value
+                                    Task { await viewModel.scan() }
+                                }
+                            ))
+                        }
+                        .padding(.vertical, 13)
+                        .animation(AppMotion.smooth, value: viewModel.settings.alignProvidersForVisibility)
+                        rowDivider
+
                         HStack {
                             Text(viewModel.l10n.text("修复完成后自动打开 Codex", "Open Codex after repair"))
                                 .foregroundStyle(DS.ink)

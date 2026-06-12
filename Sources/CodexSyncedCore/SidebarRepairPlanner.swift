@@ -27,6 +27,22 @@ enum SidebarRepairPlanner {
         }
     }
 
+    static func providerAlignmentRepairs(threads: [ThreadRow], targetProvider: String) -> [ProviderRepair] {
+        guard !targetProvider.isEmpty else { return [] }
+        return visibleResumeThreads(threads)
+            .filter { $0.modelProvider != targetProvider }
+            .map { ProviderRepair(thread: $0, targetProvider: targetProvider) }
+    }
+
+    static func rolloutProviderAlignmentRepairs(threads: [ThreadRow], targetProvider: String) -> [RolloutRepair] {
+        guard !targetProvider.isEmpty else { return [] }
+        var seen = Set<String>()
+        return visibleResumeThreads(threads).compactMap { thread in
+            guard seen.insert(thread.rolloutPath).inserted else { return nil }
+            return RolloutRepairer.makeRepair(url: URL(fileURLWithPath: thread.rolloutPath), targetProvider: targetProvider)
+        }
+    }
+
     static func timestampRepairs(threads: [ThreadRow], rollouts: [String: RolloutInfo]) -> [TimestampRepair] {
         threads.compactMap { thread in
             guard let target = rollouts[thread.rolloutPath]?.lastTimestampMs else {
@@ -209,9 +225,7 @@ enum SidebarRepairPlanner {
     private static func localProjectRoots(threads: [ThreadRow]) -> [String] {
         var seen = Set<String>()
         var roots: [String] = []
-        for thread in threads
-            .filter({ !$0.archived && resumeSourceKind($0.source) != nil && rolloutExists($0.rolloutPath) })
-            .sorted(by: { ($0.effectiveUpdatedAtMs, $0.id) < ($1.effectiveUpdatedAtMs, $1.id) }) {
+        for thread in visibleResumeThreads(threads) {
             guard !thread.cwd.isEmpty, !seen.contains(thread.cwd) else {
                 continue
             }
@@ -222,10 +236,14 @@ enum SidebarRepairPlanner {
     }
 
     private static func resumeInventory(threads: [ThreadRow]) -> [IndexRepair] {
+        visibleResumeThreads(threads)
+            .map { IndexRepair(threadID: $0.id, title: $0.title, updatedAtMs: $0.effectiveUpdatedAtMs) }
+    }
+
+    private static func visibleResumeThreads(_ threads: [ThreadRow]) -> [ThreadRow] {
         threads
             .filter { !$0.archived && resumeSourceKind($0.source) != nil && rolloutExists($0.rolloutPath) }
             .sorted { ($0.effectiveUpdatedAtMs, $0.id) < ($1.effectiveUpdatedAtMs, $1.id) }
-            .map { IndexRepair(threadID: $0.id, title: $0.title, updatedAtMs: $0.effectiveUpdatedAtMs) }
     }
 
     private static func loadIndexEntries(_ url: URL) -> [IndexRepair] {

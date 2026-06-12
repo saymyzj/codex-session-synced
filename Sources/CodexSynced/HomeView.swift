@@ -60,8 +60,8 @@ struct HomeView: View {
 
                 Divider().opacity(0.45)
 
-                if viewModel.isBusy {
-                    ActivityStrip(tint: statusColor)
+                if let progress = viewModel.progress {
+                    OperationProgressView(progress: progress, tint: statusColor)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
 
@@ -88,7 +88,9 @@ struct HomeView: View {
                 MetricTile(
                     title: viewModel.l10n.text("Provider", "Provider"),
                     value: "\(result?.sqliteProviderUpdates.count ?? 0)",
-                    caption: viewModel.l10n.text("按 rollout 回写 SQLite", "SQLite follows rollout")
+                    caption: viewModel.settings.alignProvidersForVisibility
+                        ? viewModel.l10n.text("对齐当前 Provider", "Align active provider")
+                        : viewModel.l10n.text("按 rollout 回写 SQLite", "SQLite follows rollout")
                 )
                 MetricTile(
                     title: viewModel.l10n.text("标题", "Titles"),
@@ -211,7 +213,7 @@ struct HomeView: View {
 
     private var workflowSubtitle: String {
         if viewModel.isBusy {
-            return viewModel.l10n.text("正在检查本地历史，请稍候。", "Checking local history. Please wait.")
+            return viewModel.progress?.detail ?? viewModel.l10n.text("正在检查本地历史，请稍候。", "Checking local history. Please wait.")
         }
         if viewModel.scanResult?.hasRepairs ?? false {
             return viewModel.l10n.text("发现 \(viewModel.pendingRepairCount) 项侧边栏摘要问题。下一步查看变更并选择备份模式。", "Found \(viewModel.pendingRepairCount) sidebar summary issues. Review changes and select a backup mode.")
@@ -221,7 +223,10 @@ struct HomeView: View {
 
     private var workflowActionTitle: String {
         if viewModel.isBusy {
-            return viewModel.l10n.text("正在扫描", "Scanning")
+            switch viewModel.status {
+            case .repairing: return viewModel.l10n.text("正在修复", "Repairing")
+            default: return viewModel.l10n.text("正在扫描", "Scanning")
+            }
         }
         return (viewModel.scanResult?.hasRepairs ?? false)
             ? viewModel.l10n.text("查看并修复", "Review and Repair")
@@ -272,6 +277,10 @@ struct HomeView: View {
 
     private var statusSubtitle: String {
         switch viewModel.status {
+        case .scanning:
+            viewModel.progress?.detail ?? viewModel.l10n.text("正在检查本地历史，请稍候。", "Checking local history. Please wait.")
+        case .repairing(let message):
+            viewModel.progress?.detail ?? message
         case .failed(let message): message
         default:
             viewModel.l10n.text("已读取本地会话摘要。不会修改 Token、API Key、第三方 URL 或会话正文。", "Local conversation summaries are inspected. Tokens, keys, URLs, and message bodies are never changed.")

@@ -54,6 +54,9 @@ internal sealed class MainWindow : Window
     private UiLanguage _language = UiLanguage.Zh;
     private BackupMode _backupMode;
     private bool _busy;
+    private string _busyTitle = "";
+    private string _busyDetail = "";
+    private double _busyProgress;
 
     public MainWindow()
     {
@@ -299,7 +302,7 @@ internal sealed class MainWindow : Window
         }
         outer.Children.Add(row);
         outer.Children.Add(Divider());
-        if (_busy) outer.Children.Add(Activity(status));
+        if (_busy) outer.Children.Add(BusyProgress(status));
         outer.Children.Add(InfoRow());
         return outer;
     }
@@ -326,7 +329,7 @@ internal sealed class MainWindow : Window
         var failed = _scanError is not null;
         var s = new StackPanel();
         s.Children.Add(Text(_busy ? T("正在处理", "Working") : failed ? T("扫描遇到问题", "Scan Needs Attention") : repairs ? T("发现待修复项", "Repairs Found") : T("侧边栏状态正常", "Sidebar Looks Healthy"), 16, FontWeights.SemiBold, Ink));
-        var sub = Text(_busy ? T("正在检查本地历史，请稍候。", "Checking local history. Please wait.") : failed ? _scanError! : repairs ? T($"发现 {_scan!.PendingCount} 项侧边栏摘要问题。下一步查看变更并选择备份模式。", $"Found {_scan!.PendingCount} sidebar summary issues. Review changes and select a backup mode.") : T("当前没有待处理项。重新扫描即可检查本地历史。", "No pending items. Scan again to check local history state."), 12, FontWeights.Normal, failed ? Warn : Muted);
+        var sub = Text(_busy ? _busyDetail : failed ? _scanError! : repairs ? T($"发现 {_scan!.PendingCount} 项侧边栏摘要问题。下一步查看变更并选择备份模式。", $"Found {_scan!.PendingCount} sidebar summary issues. Review changes and select a backup mode.") : T("当前没有待处理项。重新扫描即可检查本地历史。", "No pending items. Scan again to check local history state."), 12, FontWeights.Normal, failed ? Warn : Muted);
         sub.Margin = new Thickness(0, 4, 0, 14);
         sub.TextWrapping = TextWrapping.Wrap;
         s.Children.Add(sub);
@@ -346,7 +349,8 @@ internal sealed class MainWindow : Window
     {
         var summary = Panel(Summary(
             (T("目标 Provider", "Target Provider"), _scan?.ProviderInfo.Provider ?? "-"),
-            (T("按 rollout 修正 Provider 的 SQLite 记录", "SQLite provider rows matched to rollout"), (_scan?.SqliteProviderUpdates.Count ?? 0).ToString()),
+            (_settings.AlignProvidersForVisibility ? T("对齐到当前 Provider 的 SQLite 记录", "SQLite rows aligned to active provider") : T("按 rollout 修正 Provider 的 SQLite 记录", "SQLite provider rows matched to rollout"), (_scan?.SqliteProviderUpdates.Count ?? 0).ToString()),
+            (T("待对齐 rollout Provider", "Rollout providers to align"), (_scan?.RolloutRepairs.Count ?? 0).ToString()),
             (T("待写入短标题", "Sidebar title rows"), (_scan?.SqliteTitleRepairs.Count ?? 0).ToString()),
             (T("待修复更新时间", "Timestamp rows"), ((_scan?.SqliteTimestampRepairs.Count ?? 0) + (_scan?.RolloutMtimeRepairs.Count ?? 0)).ToString()),
             (T("待重建索引条目", "Index entries to rebuild"), (_scan?.IndexRepairs.Count ?? 0).ToString()),
@@ -362,7 +366,9 @@ internal sealed class MainWindow : Window
         repair.Margin = new Thickness(12, 0, 0, 0);
         AddTo(choice, mode, 1);
         AddTo(choice, repair, 2);
-        return Page(T("待修复项", "Pending Repairs"), T("修复前预览，不会写入数据，确认后先备份再修复。", "Dry-run preview. Confirming creates a backup before changes."), summary, Panel(choice), Panel(PreviewList()));
+        return _busy
+            ? Page(T("待修复项", "Pending Repairs"), T("修复前预览，不会写入数据，确认后先备份再修复。", "Dry-run preview. Confirming creates a backup before changes."), summary, Panel(choice), Panel(BusyProgress(Blue)), Panel(PreviewList()))
+            : Page(T("待修复项", "Pending Repairs"), T("修复前预览，不会写入数据，确认后先备份再修复。", "Dry-run preview. Confirming creates a backup before changes."), summary, Panel(choice), Panel(PreviewList()));
     }
 
     private UIElement PreviewList()
@@ -403,6 +409,10 @@ internal sealed class MainWindow : Window
         s.Children.Add(Divider());
         s.Children.Add(Counter(T("全量备份最大数量", "Full Limit"), () => _settings.FullLimit, v => _settings.FullLimit = v, 1, 12));
         s.Children.Add(Divider());
+        s.Children.Add(TwoCol(
+            TextBlockPair(T("跨 Provider 显示历史", "Cross-provider history visibility"), T("切到 custom/openai_http 后，将可恢复本地会话对齐到当前 Provider。", "When switching to custom/openai_http, align recoverable local threads to the active provider.")),
+            Toggle(_settings.AlignProvidersForVisibility, v => { _settings.AlignProvidersForVisibility = v; Show(BuildSettings(), false); _ = ScanAsync(); })));
+        s.Children.Add(Divider());
         s.Children.Add(ToggleRow());
         s.Children.Add(Button(T("保存设置", "Save Settings"), true, SaveSettings));
         return Page(T("设置", "Settings"), T("保留最少必要配置，避免把工具做成数据库管理器。", "Only the necessary settings for this repair tool."), Panel(s));
@@ -411,9 +421,15 @@ internal sealed class MainWindow : Window
     private async Task ScanAsync()
     {
         _scanError = null;
-        _busy = true;
-        TryShowCurrent(false);
-        try { _scan = await Task.Run(() => _service.Scan(SnapshotSettings())); _busy = false; Show(CurrentView(), true); }
+        SetBusy(T("识别当前环境", "Detecting environment"), T("正在读取 config.toml、状态库和 Provider 设置。", "Reading config.toml, state database, and provider settings."), .16);
+        try
+        {
+            SetBusy(T("扫描本地历史", "Scanning local history"), T("正在比对 SQLite、rollout 和 session_index。", "Comparing SQLite, rollout files, and session_index."), .42);
+            _scan = await Task.Run(() => _service.Scan(SnapshotSettings()));
+            SetBusy(T("整理修复预览", "Preparing repair preview"), T("正在生成备份和写入预览。", "Preparing backup and write preview."), .86);
+            _busy = false;
+            Show(CurrentView(), true);
+        }
         catch (Exception ex) { _scanError = ex.Message; _busy = false; TryShowCurrent(true); Notice(T("扫描失败", "Scan Failed"), ex.Message, Warn); }
     }
 
@@ -441,28 +457,39 @@ internal sealed class MainWindow : Window
         DefaultBackupMode = _settings.DefaultBackupMode,
         LightweightLimit = _settings.LightweightLimit,
         FullLimit = _settings.FullLimit,
-        OpenCodexAfterRepair = _settings.OpenCodexAfterRepair
+        OpenCodexAfterRepair = _settings.OpenCodexAfterRepair,
+        AlignProvidersForVisibility = _settings.AlignProvidersForVisibility
     };
 
     private async void RepairAsync()
     {
         if (_scan is null || !_scan.HasRepairs) { Notice(T("当前没有待修复项", "No Pending Repairs"), T("侧边栏会话摘要状态正常。", "Sidebar conversation summaries look healthy."), Ok); return; }
         if (System.Windows.MessageBox.Show(T($"即将创建备份并修复 {_scan.PendingCount} 项。继续吗？", $"A backup will be created and {_scan.PendingCount} items repaired. Continue?"), "Codex Synced", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
-        _busy = true; Show(CurrentView(), false);
+        SetBusy(T("备份并修复", "Backing up and repairing"), T("正在创建备份并写入 SQLite、rollout 和索引。", "Creating backup and writing SQLite, rollout, and index changes."), .48);
         try { var scan = _scan; await Task.Run(() => _service.Repair(scan, SnapshotSettings(), _backupMode)); Notice(T("修复完成", "Repair Complete"), T("侧边栏会话摘要已经修复。", "Sidebar conversation summaries were repaired."), Ok); await ScanAsync(); if (_settings.OpenCodexAfterRepair) RepairService.OpenCodex(); }
-        catch (Exception ex) { _busy = false; Notice(T("修复失败", "Repair Failed"), ex.Message, Warn); }
+        catch (Exception ex) { _busy = false; TryShowCurrent(true); Notice(T("修复失败", "Repair Failed"), ex.Message, Warn); }
     }
 
     private async void RestoreAsync(BackupRecord backup)
     {
         if (System.Windows.MessageBox.Show(T($"将恢复备份 {backup.DirectoryName}。请确认 Codex 已退出。", $"Restore backup {backup.DirectoryName}. Make sure Codex is closed."), "Codex Synced", MessageBoxButton.OKCancel, MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        SetBusy(T("恢复备份", "Restoring backup"), T("正在还原 SQLite、session_index 和 rollout metadata。", "Restoring SQLite, session_index, and rollout metadata."), .32);
         try { await Task.Run(() => _service.Restore(backup)); Notice(T("备份恢复完成", "Backup Restored"), T("本地历史已经恢复到所选备份。", "Local history was restored from the selected backup."), Ok); await ScanAsync(); }
-        catch (Exception ex) { Notice(T("恢复失败", "Restore Failed"), ex.Message, Warn); }
+        catch (Exception ex) { _busy = false; TryShowCurrent(true); Notice(T("恢复失败", "Restore Failed"), ex.Message, Warn); }
+    }
+
+    private void SetBusy(string title, string detail, double progress)
+    {
+        _busy = true;
+        _busyTitle = title;
+        _busyDetail = detail;
+        _busyProgress = Math.Clamp(progress, 0, 1);
+        TryShowCurrent(false);
     }
 
     private void SaveSettings() { _settings.DefaultBackupMode = _backupMode; _settings.Save(); Notice(T("设置已保存", "Settings Saved"), T("已保存到本机配置。", "Saved to local app settings."), Ok); _ = ScanAsync(); }
-    private string StatusTitle() => _busy ? T("正在扫描本地历史", "Scanning Local History") : _scanError is not null ? T("扫描失败", "Scan Failed") : _scan is null ? T("正在识别当前环境", "Detecting Environment") : _scan.HasRepairs ? T($"发现 {_scan.PendingCount} 项待处理", $"{_scan.PendingCount} Items Need Attention") : T("侧边栏状态正常", "Sidebar Looks Healthy");
-    private string StatusSubtitle() => _busy ? T("正在检查本地历史，请稍候。", "Checking local history. Please wait.") : _scanError is not null ? _scanError : _scan?.HasRepairs == true ? T("请查看待修复项，确认变更后执行备份并修复。", "Review pending changes, then create a backup and repair.") : T("已读取本地会话摘要。不会修改 Token、API Key、第三方 URL 或会话正文。", "Local conversation summaries are inspected. Tokens, keys, URLs, and message bodies are never changed.");
+    private string StatusTitle() => _busy ? _busyTitle : _scanError is not null ? T("扫描失败", "Scan Failed") : _scan is null ? T("正在识别当前环境", "Detecting Environment") : _scan.HasRepairs ? T($"发现 {_scan.PendingCount} 项待处理", $"{_scan.PendingCount} Items Need Attention") : T("侧边栏状态正常", "Sidebar Looks Healthy");
+    private string StatusSubtitle() => _busy ? _busyDetail : _scanError is not null ? _scanError : _scan?.HasRepairs == true ? T("请查看待修复项，确认变更后执行备份并修复。", "Review pending changes, then create a backup and repair.") : T("已读取本地会话摘要。不会修改 Token、API Key、第三方 URL 或会话正文。", "Local conversation summaries are inspected. Tokens, keys, URLs, and message bodies are never changed.");
 
     private void Notice(string title, string message, WpfBrush color)
     {
@@ -598,7 +625,8 @@ internal sealed class MainWindow : Window
     private List<PreviewItem> PreviewRows(ScanResult scan)
     {
         var rows = new List<PreviewItem>();
-        rows.AddRange(scan.SqliteProviderUpdates.Select(repair => new PreviewItem("Provider", "▦", PreviewTitle(repair.Thread.Title, repair.Thread.Id), $"{repair.Thread.ModelProvider} -> {repair.TargetProvider}")));
+        rows.AddRange(scan.SqliteProviderUpdates.Select(repair => new PreviewItem(_settings.AlignProvidersForVisibility ? T("Provider 对齐", "Provider Align") : "Provider", "▦", PreviewTitle(repair.Thread.Title, repair.Thread.Id), $"{repair.Thread.ModelProvider} -> {repair.TargetProvider}")));
+        rows.AddRange(scan.RolloutRepairs.Select(repair => new PreviewItem(T("rollout Provider", "Rollout Provider"), "▣", PreviewTitle(repair.SessionId, Path.GetFileName(repair.Path)), $"{repair.CurrentProvider ?? "nil"} -> {repair.TargetProvider}")));
         rows.AddRange(scan.SqliteTitleRepairs.Select(repair => new PreviewItem(T("标题", "Title"), "T", PreviewTitle(repair.TargetTitle, repair.ThreadId), PreviewTitle(repair.CurrentTitle, T("空标题", "empty title")))));
         rows.AddRange(scan.SqliteTimestampRepairs.Select(repair => new PreviewItem(T("时间", "Time"), "◷", PreviewTitle(repair.Title, repair.ThreadId), $"{repair.CurrentUpdatedAtMs} -> {repair.TargetUpdatedAtMs}")));
         rows.AddRange(scan.RolloutMtimeRepairs.Select(repair => new PreviewItem("mtime", "◴", PreviewTitle(repair.Title, repair.ThreadId), $"{repair.CurrentMtimeMs} -> {repair.TargetMtimeMs}")));
@@ -652,6 +680,29 @@ internal sealed class MainWindow : Window
     private static Border SoftIcon(string text, WpfBrush color) => new() { Width = 32, Height = 32, CornerRadius = new CornerRadius(8), Background = Alpha(color, .10), Child = Text(text, 15, FontWeights.SemiBold, color, center: true), VerticalAlignment = VerticalAlignment.Center };
     private static Border Empty(string icon, string title, string message) { var s = new StackPanel { Margin = new Thickness(0, 14, 0, 0) }; s.Children.Add(SoftIcon(icon, Blue)); s.Children.Add(Text(title, 16, FontWeights.SemiBold, Ink)); var msg = Text(message, 13, FontWeights.Normal, Muted); msg.TextWrapping = TextWrapping.Wrap; s.Children.Add(msg); return new Border { Child = s }; }
     private static Border Toggle(bool on, Action<bool> changed) { var shell = new Border { Width = 46, Height = 24, CornerRadius = new CornerRadius(12), Background = on ? Blue : Brush("#14000000"), Cursor = WpfCursors.Hand }; shell.Child = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Background = WpfBrushes.White, HorizontalAlignment = on ? System.Windows.HorizontalAlignment.Right : System.Windows.HorizontalAlignment.Left, Margin = new Thickness(3), Effect = Shadow(.12, 4, 1) }; shell.MouseLeftButtonUp += (_, _) => changed(!on); return shell; }
+    private Border BusyProgress(WpfBrush color)
+    {
+        var s = new StackPanel();
+        s.Children.Add(TwoCol(
+            Text(_busyTitle, 12, FontWeights.SemiBold, Ink),
+            Text($"{Math.Round(_busyProgress * 100):0}%", 12, FontWeights.SemiBold, color, center: true)));
+        var bar = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = _busyProgress * 100,
+            Height = 7,
+            Margin = new Thickness(0, 7, 0, 7),
+            Foreground = color,
+            Background = Alpha(color, .12),
+            BorderBrush = WpfBrushes.Transparent
+        };
+        s.Children.Add(bar);
+        var detail = Text(_busyDetail, 12, FontWeights.Normal, Muted);
+        detail.TextWrapping = TextWrapping.Wrap;
+        s.Children.Add(detail);
+        return new Border { Padding = new Thickness(12), Background = Alpha(color, .07), BorderBrush = Alpha(color, .14), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Child = s };
+    }
     private static Border Activity(WpfBrush color) { var bar = new Border { Height = 3, CornerRadius = new CornerRadius(2), Background = Alpha(color, .12), Margin = new Thickness(0, 14, 0, 0), ClipToBounds = true }; var glow = new Border { Width = 180, Background = Alpha(color, .65), RenderTransform = new TranslateTransform(-180, 0) }; bar.Child = glow; bar.Loaded += (_, _) => Anim((TranslateTransform)glow.RenderTransform, TranslateTransform.XProperty, -180, Math.Max(bar.ActualWidth, 360) + 180, 1050, true); return bar; }
     private static TextBlock Text(string text, double size, FontWeight weight, WpfBrush color, bool mono = false, bool center = false) => new() { Text = text, FontSize = size, FontWeight = weight, Foreground = color, FontFamily = mono ? new WpfFontFamily("Cascadia Mono, Consolas, Microsoft YaHei UI") : new WpfFontFamily("Microsoft YaHei UI, Segoe UI, Arial"), TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = center ? TextAlignment.Center : TextAlignment.Left, HorizontalAlignment = center ? System.Windows.HorizontalAlignment.Center : System.Windows.HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Center };
     private static WpfBrush Brush(string hex) => (WpfBrush)new BrushConverter().ConvertFromString(hex)!;

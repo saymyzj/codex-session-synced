@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-public enum CodexRepairError: LocalizedError {
+public enum CodexRepairError: LocalizedError, Sendable {
     case noStateDatabase(URL)
     case codexIsRunning
     case noScanResult
@@ -53,9 +53,22 @@ public final class CodexRepairService {
         }
 
         let rolloutInfo = SidebarRepairPlanner.rolloutInfoByPath(for: threads)
-        let sqliteProviderUpdates = SidebarRepairPlanner.providerRepairs(threads: threads, rollouts: rolloutInfo)
+        let sqliteProviderUpdates: [ProviderRepair]
+        let rolloutRepairs: [RolloutRepair]
+        if settings.alignProvidersForVisibility {
+            sqliteProviderUpdates = SidebarRepairPlanner.providerAlignmentRepairs(
+                threads: threads,
+                targetProvider: providerInfo.provider
+            )
+            rolloutRepairs = SidebarRepairPlanner.rolloutProviderAlignmentRepairs(
+                threads: threads,
+                targetProvider: providerInfo.provider
+            )
+        } else {
+            sqliteProviderUpdates = SidebarRepairPlanner.providerRepairs(threads: threads, rollouts: rolloutInfo)
+            rolloutRepairs = []
+        }
         let sqliteCompatibilityUpdates: [ThreadRow] = []
-        let rolloutRepairs: [RolloutRepair] = []
         let sqliteTimestampRepairs = SidebarRepairPlanner.timestampRepairs(threads: threads, rollouts: rolloutInfo)
         let sqliteTitleRepairs = SidebarRepairPlanner.titleRepairs(threads: threads)
         let rolloutMtimeRepairs = SidebarRepairPlanner.rolloutMtimeRepairs(threads: threads, rollouts: rolloutInfo)

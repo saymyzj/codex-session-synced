@@ -1,8 +1,7 @@
 import Foundation
 
 enum RolloutRepairer {
-    // Legacy helper kept for old backup compatibility tests. The current
-    // sidebar repair flow must not rewrite rollout provider metadata.
+    // Only rewrites the first session_meta line; message bodies stay untouched.
     static func makeRepair(url: URL, targetProvider: String) -> RolloutRepair? {
         guard let firstLine = firstLine(url: url) else { return nil }
         guard let data = firstLine.data(using: .utf8),
