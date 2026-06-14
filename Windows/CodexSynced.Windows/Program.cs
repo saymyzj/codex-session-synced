@@ -306,7 +306,7 @@ internal sealed class RepairService
         var sqliteHome = settings.SqliteHome;
         if (string.IsNullOrWhiteSpace(sqliteHome) && parsed.Root.TryGetValue("sqlite_home", out var configuredSqlite))
             sqliteHome = ExpandPath(configuredSqlite);
-        sqliteHome = Path.GetFullPath(string.IsNullOrWhiteSpace(sqliteHome) ? codexHome : sqliteHome);
+        sqliteHome = ResolveSQLiteHome(codexHome, sqliteHome);
         var state = LatestStateDatabase(sqliteHome);
         var threads = new List<ThreadRow>();
         if (state is not null)
@@ -443,9 +443,37 @@ internal sealed class RepairService
                 .FirstOrDefault()
             : null;
 
+    private static string ResolveSQLiteHome(string codexHome, string? explicitSQLiteHome)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitSQLiteHome))
+            return Path.GetFullPath(explicitSQLiteHome);
+
+        var nestedSQLiteHome = Path.Combine(codexHome, "sqlite");
+        return ContainsStateDatabase(nestedSQLiteHome)
+            ? Path.GetFullPath(nestedSQLiteHome)
+            : Path.GetFullPath(codexHome);
+    }
+
+    private static bool ContainsStateDatabase(string directory)
+    {
+        try
+        {
+            return Directory.Exists(directory) &&
+                Directory.EnumerateFiles(directory, "state_*.sqlite", SearchOption.TopDirectoryOnly).Any();
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static void ApplyRolloutRepair(string path, string firstLine)
     {
-        var bytes = File.ReadAllBytes(path);
+        var bytes = ReadAllBytesShared(path);
         var newline = Array.IndexOf(bytes, (byte)'\n');
         var suffix = newline >= 0 ? bytes[(newline + 1)..] : [];
         var temp = path + ".codex-synced.tmp";
@@ -462,8 +490,7 @@ internal sealed class RepairService
     {
         if (!File.Exists(path))
             return null;
-        using var reader = new StreamReader(path, Encoding.UTF8, true);
-        var firstLine = reader.ReadLine();
+        var firstLine = ReadFirstLineShared(path);
         if (string.IsNullOrWhiteSpace(firstLine))
             return null;
         JsonObject root;
@@ -502,7 +529,7 @@ internal sealed class RepairService
             return new(null, null);
         string? provider = null;
         long? lastTimestamp = null;
-        foreach (var line in File.ReadLines(path, Encoding.UTF8))
+        foreach (var line in ReadLinesShared(path))
         {
             if (string.IsNullOrWhiteSpace(line))
                 continue;
@@ -619,7 +646,7 @@ internal sealed class RepairService
             return [];
         var entries = new List<IndexRepair>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var line in File.ReadLines(indexPath, Encoding.UTF8))
+        foreach (var line in ReadLinesShared(indexPath))
         {
             if (string.IsNullOrWhiteSpace(line))
                 continue;
@@ -665,7 +692,7 @@ internal sealed class RepairService
         JsonObject root;
         try
         {
-            root = JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8))?.AsObject() ?? new JsonObject();
+            root = JsonNode.Parse(ReadAllTextShared(path))?.AsObject() ?? new JsonObject();
         }
         catch
         {
@@ -904,6 +931,80 @@ internal sealed class RepairService
         if (path.StartsWith("~/") || path.StartsWith("~\\"))
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
         return Environment.ExpandEnvironmentVariables(path);
+    }
+
+    private static FileStream OpenSharedRead(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+    private static IEnumerable<string> ReadLinesShared(string path)
+    {
+        FileStream stream;
+        try
+        {
+            stream = OpenSharedRead(path);
+        }
+        catch (IOException)
+        {
+            yield break;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            yield break;
+        }
+
+        using (stream)
+        using (var reader = new StreamReader(stream, Encoding.UTF8, true))
+        {
+            while (true)
+            {
+                string? line;
+                try
+                {
+                    line = reader.ReadLine();
+                }
+                catch (IOException)
+                {
+                    yield break;
+                }
+
+                if (line is null)
+                    yield break;
+                yield return line;
+            }
+        }
+    }
+
+    private static string? ReadFirstLineShared(string path)
+    {
+        try
+        {
+            using var stream = OpenSharedRead(path);
+            using var reader = new StreamReader(stream, Encoding.UTF8, true);
+            return reader.ReadLine();
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string ReadAllTextShared(string path)
+    {
+        using var stream = OpenSharedRead(path);
+        using var reader = new StreamReader(stream, Encoding.UTF8, true);
+        return reader.ReadToEnd();
+    }
+
+    private static byte[] ReadAllBytesShared(string path)
+    {
+        using var stream = OpenSharedRead(path);
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
     }
 }
 
@@ -1700,13 +1801,35 @@ internal static class SelfTest
             var restored = service.Scan(settings);
             Assert(restored.SqliteProviderUpdates.Count == 1, "Restore did not return SQLite provider metadata.");
             settings.AlignProvidersForVisibility = true;
-            var aligned = service.Scan(settings);
+            ScanResult aligned;
+            using (new FileStream(rollout, FileMode.Open, FileAccess.Write, FileShare.Read))
+            {
+                aligned = service.Scan(settings);
+            }
             Assert(aligned.SqliteProviderUpdates.Count == 0, "Provider alignment should not rewrite rows already on the active provider.");
             Assert(aligned.RolloutRepairs.Count == 1, "Provider alignment rollout repair was not detected.");
             var alignedBackup = service.Repair(aligned, settings, BackupMode.Lightweight, true);
             Assert(alignedBackup is not null, "Provider alignment backup was not created.");
             Assert(File.ReadAllText(rollout).Contains("\"model_provider\":\"custom\""), "Rollout provider was not aligned to custom.");
             Assert(File.ReadAllText(rollout).Contains("\"message\":\"keep me\""), "Rollout body changed unexpectedly during provider alignment.");
+
+            var migratedRoot = Path.Combine(root, "migrated-sqlite-home");
+            Directory.CreateDirectory(migratedRoot);
+            File.WriteAllText(Path.Combine(migratedRoot, "config.toml"), "model_provider = \"custom\"" + Environment.NewLine);
+            var migratedRolloutDirectory = Path.Combine(migratedRoot, "sessions", "2026", "06", "02");
+            Directory.CreateDirectory(migratedRolloutDirectory);
+            var staleRollout = Path.Combine(migratedRolloutDirectory, "rollout-stale.jsonl");
+            var activeRollout = Path.Combine(migratedRolloutDirectory, "rollout-active.jsonl");
+            File.WriteAllText(staleRollout, "{\"timestamp\":\"2026-06-02T12:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"stale-root\",\"model_provider\":\"custom\"}}" + Environment.NewLine);
+            File.WriteAllText(activeRollout, "{\"timestamp\":\"2026-06-02T12:00:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"active-nested\",\"model_provider\":\"custom\"}}" + Environment.NewLine);
+            CreateSingleThreadState(Path.Combine(migratedRoot, "state_5.sqlite"), "stale-root", staleRollout);
+            var nestedSqliteHome = Path.Combine(migratedRoot, "sqlite");
+            Directory.CreateDirectory(nestedSqliteHome);
+            CreateSingleThreadState(Path.Combine(nestedSqliteHome, "state_5.sqlite"), "active-nested", activeRollout);
+
+            var migratedScan = service.Scan(new AppSettings { CodexHome = migratedRoot, OpenCodexAfterRepair = false });
+            Assert(Path.GetFullPath(migratedScan.SqliteHome) == Path.GetFullPath(nestedSqliteHome), "Migrated sqlite home was not preferred over stale root database.");
+            Assert(migratedScan.Threads.Count == 1 && migratedScan.Threads[0].Id == "active-nested", "Scan used the stale root state database instead of the active sqlite directory.");
             Console.WriteLine("Codex Synced Windows self-test passed.");
             return 0;
         }
@@ -1721,5 +1844,46 @@ internal static class SelfTest
     {
         if (!condition)
             throw new InvalidOperationException(message);
+    }
+
+    private static void CreateSingleThreadState(string statePath, string threadId, string rolloutPath)
+    {
+        using var db = new SqliteDatabase(statePath, false);
+        db.Execute("""
+            CREATE TABLE threads (
+                id TEXT PRIMARY KEY,
+                rollout_path TEXT,
+                created_at INTEGER,
+                title TEXT,
+                model_provider TEXT,
+                has_user_event INTEGER,
+                cwd TEXT,
+                source TEXT,
+                thread_source TEXT,
+                archived INTEGER,
+                updated_at INTEGER,
+                updated_at_ms INTEGER,
+                first_user_message TEXT,
+                preview TEXT
+            )
+            """);
+        db.Execute($"""
+            INSERT INTO threads VALUES (
+                '{threadId.Replace("'", "''")}',
+                '{rolloutPath.Replace("'", "''")}',
+                1,
+                '{threadId.Replace("'", "''")}',
+                'custom',
+                1,
+                'C:\work',
+                'vscode',
+                'user',
+                0,
+                1,
+                1000,
+                '{threadId.Replace("'", "''")}',
+                ''
+            )
+            """);
     }
 }

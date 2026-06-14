@@ -75,11 +75,22 @@ public enum CodexPathResolver {
         if let configValue = parsedConfig.rootValues["sqlite_home"], !configValue.isEmpty {
             return expandTilde(configValue).standardizedFileURL
         }
+        let nestedSQLiteHome = settings.codexHome.appendingPathComponent("sqlite").standardizedFileURL
+        if containsStateDatabase(nestedSQLiteHome) {
+            return nestedSQLiteHome
+        }
         return settings.codexHome.standardizedFileURL
     }
 
     static func expandTilde(_ path: String) -> URL {
         let expanded = (path as NSString).expandingTildeInPath
         return URL(fileURLWithPath: expanded)
+    }
+
+    private static func containsStateDatabase(_ url: URL) -> Bool {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else {
+            return false
+        }
+        return files.contains { $0.lastPathComponent.hasPrefix("state_") && $0.pathExtension == "sqlite" }
     }
 }

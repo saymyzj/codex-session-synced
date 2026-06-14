@@ -33,6 +33,26 @@ struct CodexSyncedCoreTests {
         #expect(parsed.rootValues["model_provider"] == "custom")
     }
 
+    @Test func sqliteHomePrefersNestedDirectoryWhenPresent() throws {
+        let directory = try makeTempDirectory()
+        let nested = directory.appendingPathComponent("sqlite")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data().write(to: nested.appendingPathComponent("state_5.sqlite"))
+
+        let settings = AppSettings(
+            language: .zh,
+            codexHome: directory,
+            sqliteHome: nil,
+            defaultBackupMode: .lightweight,
+            lightweightLimit: 5,
+            fullLimit: 3,
+            openCodexAfterRepair: false
+        )
+        let parsed = ParsedConfig(rootValues: [:], providerSections: [:])
+
+        #expect(CodexPathResolver.effectiveSQLiteHome(settings: settings, parsedConfig: parsed).path == nested.standardizedFileURL.path)
+    }
+
     @Test func rolloutRepairOnlyChangesSessionMetaProvider() throws {
         let directory = try makeTempDirectory()
         let rollout = directory.appendingPathComponent("rollout-test.jsonl")

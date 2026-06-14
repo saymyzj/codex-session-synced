@@ -12,17 +12,17 @@ Codex Synced 是一个 Windows / macOS 本地修复工具，用来解决 Codex D
 
 ## Windows 下载与使用
 
-1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-Windows-x64-1.2.6.msi`。
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-Windows-x64-1.2.7.msi`。
 2. 退出 Codex。
 3. 双击 MSI 完成安装，然后从开始菜单打开 `Codex Synced`。
 4. 查看待修复项，选择备份模式，点击“备份并修复”。
 5. 重新打开 Codex，检查历史会话。
 
-Windows 版是完整桌面应用安装包，默认读取 `%USERPROFILE%\.codex`，也可以在设置中修改目录。Release 中也提供 `Codex-Synced-Windows-x64-1.2.6.zip`，用于不想安装时手动运行应用目录。
+Windows 版是完整桌面应用安装包，默认读取 `%USERPROFILE%\.codex`，并会自动识别其中的 `sqlite` 状态库目录；也可以在设置中修改目录。Release 中也提供 `Codex-Synced-Windows-x64-1.2.7.zip`，用于不想安装时手动运行应用目录。
 
 ## macOS 下载与安装
 
-1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-macOS-1.2.6.dmg`。
+1. 前往 [GitHub Releases](https://github.com/saymyzj/codex-session-synced/releases/latest) 下载 `Codex-Synced-macOS-1.2.7.dmg`。
 2. 双击打开 DMG。
 3. 将 `Codex Synced.app` 拖入 `Applications`。
 4. 第一次打开时，如果 macOS 提示来自未验证开发者，请在 Finder 中右键点击应用，选择“打开”，再确认打开。
@@ -38,7 +38,7 @@ Windows 版是完整桌面应用安装包，默认读取 `%USERPROFILE%\.codex`�
 2. 可选：校验下载文件的 SHA256，应与 Release 页面一致：
 
 ```bash
-shasum -a 256 ~/Downloads/Codex-Synced-macOS-1.2.6.dmg
+shasum -a 256 ~/Downloads/Codex-Synced-macOS-1.2.7.dmg
 ```
 
 3. 先尝试 Apple 推荐的方式：在 Finder 中进入 `Applications`，右键点击 `Codex Synced.app`，选择“打开”，再确认打开。
